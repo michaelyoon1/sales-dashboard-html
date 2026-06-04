@@ -735,42 +735,42 @@
       </article>
     </section>
 
-    <section class="panel projection-panel" aria-label="Model predicted sales">
+    <section class="panel projection-panel" aria-label="Estimated competitor sales">
       <div class="panel-title">
         <div>
-          <h2>Model-Predicted Past Sales</h2>
-          <p class="note" id="projectionNote">Backtest model for TENKI sales using historical genre sales, ranking-file signals, and event calendar effects.</p>
+          <h2>Estimated Competitor Sales</h2>
+          <p class="note" id="projectionNote">Row-level model that uses matched TENKI sales to estimate missing ranked competitor sales from the Rakuten ranking files.</p>
         </div>
         <span id="projectionRange">Model range</span>
       </div>
       <div class="projection-grid">
         <article class="projection-card">
-          <span>Actual TENKI Sales</span>
+          <span>Matched TENKI Sales</span>
           <strong id="observedMarketSales">-</strong>
-          <small id="observedMarketSub">Observed sales in selected range</small>
+          <small id="observedMarketSub">Ranking rows with actual TENKI sales</small>
         </article>
         <article class="projection-card">
-          <span>Model Gap</span>
+          <span>Estimated Competitor Sales</span>
           <strong id="projectedMissingSales">-</strong>
-          <small id="projectedMissingSub">Predicted minus actual</small>
+          <small id="projectedMissingSub">Predicted missing ranked rows</small>
         </article>
         <article class="projection-card">
-          <span>Predicted Sales</span>
+          <span>Estimated Ranked Market</span>
           <strong id="projectedTotalSales">-</strong>
-          <small id="projectedTotalSub">Model-predicted TENKI sales</small>
+          <small id="projectedTotalSub">TENKI matches plus competitor estimates</small>
         </article>
         <article class="projection-card">
-          <span>Backtest Error</span>
+          <span>Ranking Coverage</span>
           <strong id="observedCoverage">-</strong>
-          <small id="observedCoverageSub">Absolute gap as share of actual</small>
+          <small id="observedCoverageSub">Matched vs predicted ranking rows</small>
         </article>
       </div>
       <div id="marketBar" class="market-bar" aria-hidden="true"><span></span><span></span></div>
       <div class="legend">
         <span><i class="observed-dot"></i>Actual TENKI sales</span>
-        <span><i class="projected-dot"></i>Model-predicted TENKI sales</span>
+        <span><i class="projected-dot"></i>Estimated ranked market</span>
       </div>
-      <p class="note">Model method: the prediction blends rolling recent TENKI sales, historical weekday/seasonality patterns, rank-file strength signals, and measured event lifts. It predicts past TENKI sales; it is not adding all other shops together.</p>
+      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. Unmatched ranking rows are treated as competitors and estimated one row at a time before aggregation.</p>
     </section>
 
     <section class="panel event-panel" aria-label="Event impact">
@@ -870,7 +870,7 @@
   </main>
 
   <script src="top_items_daily_data.js?v=english-genres-20260604"></script>
-  <script src="projected_market_data.js?v=all-genre-predictions-20260604"></script>
+  <script src="projected_market_data.js?v=competitor-row-model-20260604"></script>
   <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
@@ -1317,7 +1317,7 @@
         <line x1="${Math.max(pad.left, width - 340)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 306)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 298)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 190)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 156)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
-        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">Model prediction</text>
+        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">Ranked market</text>
       ` : "";
 
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -1449,10 +1449,10 @@
 
       const granularityLabel = metricLabel(granularitySelect.value).replace("day", "Daily").replace("week", "Weekly").replace("month", "Monthly");
       document.getElementById("chartTitle").textContent = metric === "sales"
-        ? `${granularityLabel} Actual vs Model-Predicted Sales for ${genreLabel(genre)}`
+        ? `${granularityLabel} TENKI vs Estimated Ranked Market for ${genreLabel(genre)}`
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
-        ? `Green is actual TENKI sales; purple is a backtest prediction from historical sales, rank signals, and events for ${selectedLabel || "the selected range"}.`
+        ? `Green is observed TENKI sales. Purple estimates matched TENKI sales plus missing ranked competitor sales for ${selectedLabel || "the selected range"}.`
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
@@ -1460,17 +1460,17 @@
       const comparisonMax = Math.max(projection.observedSales || 0, projection.projectedTotalSales || 0, 1);
       const observedShare = Math.max(1, projection.observedSales / comparisonMax * 100);
       const projectedShare = Math.max(1, projection.projectedTotalSales / comparisonMax * 100);
-      const errorPct = projection.observedSales ? projection.absoluteError * 100 / projection.observedSales : 0;
+      const coveragePct = projection.rankedRows ? projection.observedRows * 100 / projection.rankedRows : 0;
       const projectedMultiplier = projection.observedSales ? projection.projectedTotalSales / projection.observedSales : 0;
       document.getElementById("projectionRange").textContent = selectedLabel || "Model range";
       document.getElementById("observedMarketSales").textContent = fmtYen.format(projection.observedSales || 0);
       document.getElementById("observedMarketSub").textContent = `${fmtNum.format(projection.observedRows)} ranked rows matched from ${fmtNum.format(projection.rankedRows)} ranking rows`;
-      document.getElementById("projectedMissingSales").textContent = formatSignedYen(projection.projectedMissingSales || 0);
-      document.getElementById("projectedMissingSub").textContent = `${projection.projectedMissingSales >= 0 ? "Model is above actual" : "Model is below actual"} for selected range`;
+      document.getElementById("projectedMissingSales").textContent = fmtYen.format(projection.projectedMissingSales || 0);
+      document.getElementById("projectedMissingSub").textContent = `${fmtNum.format(projection.projectedRows || 0)} competitor ranking rows estimated`;
       document.getElementById("projectedTotalSales").textContent = fmtYen.format(projection.projectedTotalSales || 0);
-      document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x actual TENKI sales` : "Model-predicted TENKI sales";
-      document.getElementById("observedCoverage").textContent = `${fmtPct.format(errorPct)}%`;
-      document.getElementById("observedCoverageSub").textContent = `${fmtNum.format(projection.eventTypeCount)} event signals included across daily rows`;
+      document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x matched TENKI ranked sales` : "TENKI matches plus competitor estimates";
+      document.getElementById("observedCoverage").textContent = `${fmtPct.format(coveragePct)}%`;
+      document.getElementById("observedCoverageSub").textContent = `${fmtNum.format(projection.observedRows || 0)} matched / ${fmtNum.format(projection.projectedRows || 0)} estimated`;
       document.getElementById("marketBar").style.setProperty("--observed", `${observedShare}fr`);
       document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
