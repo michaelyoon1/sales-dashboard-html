@@ -220,6 +220,92 @@
       margin-bottom: 16px;
     }
 
+    .projection-panel {
+      margin-bottom: 16px;
+    }
+
+    .projection-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .projection-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      min-height: 96px;
+    }
+
+    .projection-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .projection-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: clamp(19px, 2vw, 28px);
+      line-height: 1.08;
+    }
+
+    .projection-card small {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .market-bar {
+      display: grid;
+      grid-template-columns: var(--observed, 1fr) var(--projected, 1fr);
+      min-height: 18px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e7edf2;
+      margin-top: 14px;
+    }
+
+    .market-bar span:first-child {
+      background: var(--accent);
+    }
+
+    .market-bar span:last-child {
+      background: #8b6ee8;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+
+    .legend .observed-dot {
+      background: var(--accent);
+    }
+
+    .legend .projected-dot {
+      background: #8b6ee8;
+    }
+
     .card,
     .panel {
       background: var(--panel);
@@ -445,6 +531,10 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
+      .projection-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .icon-button {
         width: 100%;
       }
@@ -457,6 +547,10 @@
       }
 
       .kpis {
+        grid-template-columns: 1fr;
+      }
+
+      .projection-grid {
         grid-template-columns: 1fr;
       }
 
@@ -581,6 +675,44 @@
       </article>
     </section>
 
+    <section class="panel projection-panel" aria-label="Projected ranked-shop market">
+      <div class="panel-title">
+        <div>
+          <h2>Projected Ranked-Shop Market</h2>
+          <p class="note" id="projectionNote">Observed TENKI-matched sales plus estimated sales for ranked shops/items not present in the observed sales data.</p>
+        </div>
+        <span id="projectionRange">Estimate</span>
+      </div>
+      <div class="projection-grid">
+        <article class="projection-card">
+          <span>Observed TENKI Sales</span>
+          <strong id="observedMarketSales">-</strong>
+          <small id="observedMarketSub">Matched ranking rows only</small>
+        </article>
+        <article class="projection-card">
+          <span>Projected Missing Sales</span>
+          <strong id="projectedMissingSales">-</strong>
+          <small id="projectedMissingSub">Estimated unobserved ranked rows</small>
+        </article>
+        <article class="projection-card">
+          <span>Projected Total Market</span>
+          <strong id="projectedTotalSales">-</strong>
+          <small id="projectedTotalSub">Observed plus projected</small>
+        </article>
+        <article class="projection-card">
+          <span>Observed Coverage</span>
+          <strong id="observedCoverage">-</strong>
+          <small id="observedCoverageSub">Rows with observed TENKI sales</small>
+        </article>
+      </div>
+      <div id="marketBar" class="market-bar" aria-hidden="true"><span></span><span></span></div>
+      <div class="legend">
+        <span><i class="observed-dot"></i>Observed TENKI-matched sales</span>
+        <span><i class="projected-dot"></i>Projected missing ranked-shop sales</span>
+      </div>
+      <p class="note">Projection method: missing ranked rows are estimated from historical observed sales at the same genre/rank where available, otherwise from the overall rank curve, with a small price adjustment. These are estimates, not actual reported competitor sales.</p>
+    </section>
+
     <section class="grid">
       <div>
         <section class="panel">
@@ -649,8 +781,10 @@
   </main>
 
   <script src="top_items_daily_data.js"></script>
+  <script src="projected_market_data.js"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
+    const projectedMarketData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
 
     const fmtYen = new Intl.NumberFormat("ja-JP", {
       style: "currency",
@@ -677,6 +811,7 @@
 
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
+    const projectedByGenre = new Map();
 
     for (const row of data.dailyTotals) {
       if (!totalsByGenre.has(row.genre)) totalsByGenre.set(row.genre, []);
@@ -689,7 +824,16 @@
       itemsByGenreDate.get(key).push(row);
     }
 
+    for (const row of projectedMarketData.daily) {
+      if (!projectedByGenre.has(row.genre)) projectedByGenre.set(row.genre, []);
+      projectedByGenre.get(row.genre).push(row);
+    }
+
     for (const rows of totalsByGenre.values()) {
+      rows.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    for (const rows of projectedByGenre.values()) {
       rows.sort((a, b) => a.date.localeCompare(b.date));
     }
 
@@ -837,6 +981,32 @@
 
     function rangeRows(rows, start, end) {
       return rows.filter(row => row.date >= start && row.date <= end);
+    }
+
+    function projectionRows(genre, start, end) {
+      return rangeRows(projectedByGenre.get(genre) || [], start, end);
+    }
+
+    function sumProjection(rows) {
+      return rows.reduce((total, row) => ({
+        observedSales: total.observedSales + (row.observedSales || 0),
+        projectedMissingSales: total.projectedMissingSales + (row.projectedMissingSales || 0),
+        projectedTotalSales: total.projectedTotalSales + (row.projectedTotalSales || 0),
+        rankedRows: total.rankedRows + (row.rankedRows || 0),
+        observedRows: total.observedRows + (row.observedRows || 0),
+        projectedRows: total.projectedRows + (row.projectedRows || 0),
+        genreRankEstimates: total.genreRankEstimates + (row.genreRankEstimates || 0),
+        fallbackEstimates: total.fallbackEstimates + (row.fallbackEstimates || 0)
+      }), {
+        observedSales: 0,
+        projectedMissingSales: 0,
+        projectedTotalSales: 0,
+        rankedRows: 0,
+        observedRows: 0,
+        projectedRows: 0,
+        genreRankEstimates: 0,
+        fallbackEstimates: 0
+      });
     }
 
     function rangeLabel(start, end) {
@@ -1022,6 +1192,8 @@
       const rows = currentRows();
       const selectedRows = rangeRows(rows, selectedRange.start, selectedRange.end);
       const trendRows = aggregateTrendRows(rows, granularitySelect.value);
+      const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
+      const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
         salesItems: total.salesItems + (row.salesItems || 0),
@@ -1050,6 +1222,22 @@
       document.getElementById("chartNote").textContent = `The shaded area marks ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = rows.length ? `${rows[0].date} to ${rows[rows.length - 1].date}` : "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
+
+      const observedShare = projection.projectedTotalSales ? Math.max(1, projection.observedSales / projection.projectedTotalSales * 100) : 50;
+      const projectedShare = projection.projectedTotalSales ? Math.max(1, projection.projectedMissingSales / projection.projectedTotalSales * 100) : 50;
+      const coverage = projection.rankedRows ? projection.observedRows * 100 / projection.rankedRows : 0;
+      const projectedMultiplier = projection.observedSales ? projection.projectedTotalSales / projection.observedSales : 0;
+      document.getElementById("projectionRange").textContent = selectedLabel || "Estimate";
+      document.getElementById("observedMarketSales").textContent = fmtYen.format(projection.observedSales || 0);
+      document.getElementById("observedMarketSub").textContent = `${fmtNum.format(projection.observedRows)} observed rows from ${fmtNum.format(projection.rankedRows)} ranked rows`;
+      document.getElementById("projectedMissingSales").textContent = fmtYen.format(projection.projectedMissingSales || 0);
+      document.getElementById("projectedMissingSub").textContent = `${fmtNum.format(projection.projectedRows)} ranked rows estimated`;
+      document.getElementById("projectedTotalSales").textContent = fmtYen.format(projection.projectedTotalSales || 0);
+      document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x observed TENKI-matched sales` : "Observed plus projected";
+      document.getElementById("observedCoverage").textContent = `${fmtPct.format(coverage)}%`;
+      document.getElementById("observedCoverageSub").textContent = `${fmtNum.format(projection.genreRankEstimates)} genre/rank estimates; ${fmtNum.format(projection.fallbackEstimates)} fallback estimates`;
+      document.getElementById("marketBar").style.setProperty("--observed", `${observedShare}fr`);
+      document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
       syncPresetButtons();
       drawTrend(trendRows, selectedRange.start, selectedRange.end, metric);
