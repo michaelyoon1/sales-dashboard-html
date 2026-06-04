@@ -66,23 +66,117 @@
 
     .controls {
       display: grid;
-      grid-template-columns: minmax(170px, 1fr) minmax(150px, 0.75fr) minmax(150px, 0.75fr) minmax(150px, 0.8fr) auto auto;
       gap: 10px;
-      align-items: end;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
-      box-shadow: var(--shadow);
+      justify-items: end;
+      align-content: end;
+      min-width: min(720px, 100%);
     }
 
-    label {
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+      align-items: center;
+      position: relative;
+    }
+
+    .control-field {
       display: grid;
       gap: 6px;
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
+    }
+
+    .genre-field {
+      width: min(100%, 520px);
+    }
+
+    .pill-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 0 12px;
+      box-shadow: 0 8px 22px rgba(16, 24, 40, 0.05);
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .pill-control select {
+      min-height: 28px;
+      border: 0;
+      border-left: 1px solid var(--line);
+      border-radius: 0;
+      color: #6b5fd7;
+      background: transparent;
+      padding: 0 4px 0 10px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .date-popover {
+      display: none;
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 54px;
+      z-index: 5;
+      width: min(520px, calc(100vw - 32px));
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 22px 60px rgba(16, 24, 40, 0.18);
+      padding: 14px;
+    }
+
+    .date-popover.open {
+      display: grid;
+      gap: 14px;
+    }
+
+    .date-popover-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .preset-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .preset-list button {
+      min-height: 34px;
+      width: 100%;
+      border-radius: 7px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .preset-list button.active {
+      color: #5b46d9;
+      border-color: #d8d1ff;
+      background: #f0edff;
+    }
+
+    .popover-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .popover-actions button {
+      width: auto;
+      padding: 0 14px;
     }
 
     select,
@@ -97,10 +191,15 @@
     }
 
     button {
-      width: 42px;
+      width: auto;
       cursor: pointer;
       color: var(--accent);
       font-weight: 800;
+    }
+
+    .icon-button {
+      width: 42px;
+      border-radius: 999px;
     }
 
     button:hover {
@@ -324,16 +423,29 @@
 
     @media (max-width: 980px) {
       header,
-      .grid,
-      .controls {
+      .grid {
         grid-template-columns: 1fr;
+      }
+
+      .controls,
+      .toolbar {
+        justify-items: stretch;
+        justify-content: stretch;
+      }
+
+      .pill-control {
+        width: 100%;
+      }
+
+      .pill-control select {
+        flex: 1;
       }
 
       .kpis {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
-      button {
+      .icon-button {
         width: 100%;
       }
     }
@@ -352,6 +464,15 @@
         height: 260px;
       }
 
+      .date-popover {
+        right: 0;
+      }
+
+      .date-popover-grid,
+      .preset-list {
+        grid-template-columns: 1fr;
+      }
+
       th,
       td {
         padding: 8px 6px;
@@ -368,28 +489,72 @@
         <p class="subtitle">Historical review of the highest-selling items for one selected genre and date range. Sales are shown in yen.</p>
       </div>
       <section class="controls" aria-label="Dashboard controls">
-        <label>
+        <label class="control-field genre-field">
           Genre
           <select id="genreSelect"></select>
         </label>
-        <label>
-          Start date
-          <input id="startDateInput" type="date">
-        </label>
-        <label>
-          End date
-          <input id="endDateInput" type="date">
-        </label>
-        <label>
-          Chart metric
-          <select id="metricSelect">
-            <option value="sales">Sales</option>
-            <option value="salesItems">Items Sold</option>
-            <option value="pv">Page Views</option>
-          </select>
-        </label>
-        <button id="prevDay" type="button" aria-label="Previous range" title="Previous range">&#8592;</button>
-        <button id="nextDay" type="button" aria-label="Next range" title="Next range">&#8594;</button>
+        <div class="toolbar">
+          <span class="pill-control">
+            Date range
+            <select id="rangePresetSelect" aria-label="Date range preset">
+              <option value="today">Today</option>
+              <option value="7d">Last 7 days</option>
+              <option value="4w">Last 4 weeks</option>
+              <option value="6m" selected>Last 6 months</option>
+              <option value="12m">Last 12 months</option>
+              <option value="mtd">Month to date</option>
+              <option value="qtd">Quarter to date</option>
+              <option value="ytd">Year to date</option>
+              <option value="all">All time</option>
+              <option value="custom">Custom</option>
+            </select>
+          </span>
+          <span class="pill-control">
+            <select id="granularitySelect" aria-label="Chart granularity">
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </span>
+          <span class="pill-control">
+            Metric
+            <select id="metricSelect" aria-label="Chart metric">
+              <option value="sales">Sales</option>
+              <option value="salesItems">Items Sold</option>
+              <option value="pv">Page Views</option>
+            </select>
+          </span>
+          <button id="customRangeToggle" class="icon-button" type="button" aria-label="Open custom date range" title="Custom date range">&#128197;</button>
+          <button id="prevDay" class="icon-button" type="button" aria-label="Previous range" title="Previous range">&#8592;</button>
+          <button id="nextDay" class="icon-button" type="button" aria-label="Next range" title="Next range">&#8594;</button>
+          <div id="datePopover" class="date-popover" aria-label="Custom date range">
+            <div class="preset-list" aria-label="Date presets">
+              <button type="button" data-preset="today">Today</button>
+              <button type="button" data-preset="7d">Last 7 days</button>
+              <button type="button" data-preset="4w">Last 4 weeks</button>
+              <button type="button" data-preset="6m">Last 6 months</button>
+              <button type="button" data-preset="12m">Last 12 months</button>
+              <button type="button" data-preset="mtd">Month to date</button>
+              <button type="button" data-preset="qtd">Quarter to date</button>
+              <button type="button" data-preset="ytd">Year to date</button>
+              <button type="button" data-preset="all">All time</button>
+            </div>
+            <div class="date-popover-grid">
+              <label class="control-field">
+                Start
+                <input id="startDateInput" type="date">
+              </label>
+              <label class="control-field">
+                End
+                <input id="endDateInput" type="date">
+              </label>
+            </div>
+            <div class="popover-actions">
+              <button id="clearCustomRange" type="button">Clear</button>
+              <button id="applyCustomRange" type="button">Apply</button>
+            </div>
+          </div>
+        </div>
       </section>
     </header>
 
@@ -500,9 +665,15 @@
     const genreSelect = document.getElementById("genreSelect");
     const startDateInput = document.getElementById("startDateInput");
     const endDateInput = document.getElementById("endDateInput");
+    const rangePresetSelect = document.getElementById("rangePresetSelect");
+    const granularitySelect = document.getElementById("granularitySelect");
     const metricSelect = document.getElementById("metricSelect");
     const prevDay = document.getElementById("prevDay");
     const nextDay = document.getElementById("nextDay");
+    const customRangeToggle = document.getElementById("customRangeToggle");
+    const datePopover = document.getElementById("datePopover");
+    const applyCustomRange = document.getElementById("applyCustomRange");
+    const clearCustomRange = document.getElementById("clearCustomRange");
 
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
@@ -563,6 +734,71 @@
       return currentRows().map(row => row.date);
     }
 
+    function addDays(date, days) {
+      const next = new Date(`${date}T00:00:00`);
+      next.setDate(next.getDate() + days);
+      return next.toISOString().slice(0, 10);
+    }
+
+    function addMonthsIso(date, months) {
+      const next = new Date(`${date}T00:00:00`);
+      const day = next.getDate();
+      next.setDate(1);
+      next.setMonth(next.getMonth() + months);
+      const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+      next.setDate(Math.min(day, lastDay));
+      return next.toISOString().slice(0, 10);
+    }
+
+    function firstDayOfMonth(date) {
+      return `${date.slice(0, 7)}-01`;
+    }
+
+    function firstDayOfQuarter(date) {
+      const current = new Date(`${date}T00:00:00`);
+      const quarterStartMonth = Math.floor(current.getMonth() / 3) * 3;
+      return new Date(current.getFullYear(), quarterStartMonth, 1).toISOString().slice(0, 10);
+    }
+
+    function firstDayOfYear(date) {
+      return `${date.slice(0, 4)}-01-01`;
+    }
+
+    function clampDateToAvailable(date) {
+      const dates = availableDates();
+      if (!dates.length) return "";
+      if (date <= dates[0]) return dates[0];
+      if (date >= dates[dates.length - 1]) return dates[dates.length - 1];
+      return nearestAvailableDate(date);
+    }
+
+    function setRangeFromPreset(preset) {
+      const dates = availableDates();
+      if (!dates.length) return;
+      const maxDate = dates[dates.length - 1];
+      let start = maxDate;
+      let end = maxDate;
+
+      if (preset === "today") start = maxDate;
+      if (preset === "7d") start = addDays(maxDate, -6);
+      if (preset === "4w") start = addDays(maxDate, -27);
+      if (preset === "6m") start = addMonthsIso(maxDate, -6);
+      if (preset === "12m") start = addMonthsIso(maxDate, -12);
+      if (preset === "mtd") start = firstDayOfMonth(maxDate);
+      if (preset === "qtd") start = firstDayOfQuarter(maxDate);
+      if (preset === "ytd") start = firstDayOfYear(maxDate);
+      if (preset === "all") start = dates[0];
+
+      startDateInput.value = clampDateToAvailable(start);
+      endDateInput.value = clampDateToAvailable(end);
+    }
+
+    function syncPresetButtons() {
+      document.querySelectorAll("[data-preset]").forEach(button => {
+        button.classList.toggle("active", button.dataset.preset === rangePresetSelect.value);
+      });
+    }
+
     function setDateBounds() {
       const dates = availableDates();
       startDateInput.min = dates[0] || "";
@@ -570,12 +806,7 @@
       endDateInput.min = dates[0] || "";
       endDateInput.max = dates[dates.length - 1] || "";
       if (!dates.includes(startDateInput.value) || !dates.includes(endDateInput.value)) {
-        const bestDay = [...currentRows()]
-          .filter(row => itemsByGenreDate.has(`${genreSelect.value}|${row.date}`))
-          .sort((a, b) => b.sales - a.sales)[0];
-        const bestDate = bestDay?.date || dates[dates.length - 1] || "";
-        startDateInput.value = bestDate;
-        endDateInput.value = bestDate;
+        setRangeFromPreset(rangePresetSelect.value === "custom" ? "6m" : rangePresetSelect.value);
       }
     }
 
@@ -612,6 +843,43 @@
       return start === end ? start : `${start} to ${end}`;
     }
 
+    function weekKey(date) {
+      const current = new Date(`${date}T00:00:00`);
+      const day = current.getDay() || 7;
+      current.setDate(current.getDate() - day + 1);
+      return `Week of ${current.toISOString().slice(0, 10)}`;
+    }
+
+    function monthKey(date) {
+      return date.slice(0, 7);
+    }
+
+    function aggregateTrendRows(rows, granularity) {
+      if (granularity === "day") return rows;
+      const buckets = new Map();
+      for (const row of rows) {
+        const key = granularity === "week" ? weekKey(row.date) : monthKey(row.date);
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            date: key,
+            sales: 0,
+            salesItems: 0,
+            pv: 0,
+            itemCount: 0,
+            startDate: row.date,
+            endDate: row.date
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.sales += row.sales || 0;
+        bucket.salesItems += row.salesItems || 0;
+        bucket.pv += row.pv || 0;
+        bucket.itemCount += row.itemCount || 0;
+        bucket.endDate = row.date;
+      }
+      return [...buckets.values()];
+    }
+
     function moveDate(offset) {
       const dates = availableDates();
       const range = normalizedRange();
@@ -631,8 +899,8 @@
       const innerW = Math.max(1, width - pad.left - pad.right);
       const innerH = Math.max(1, height - pad.top - pad.bottom);
       const max = Math.max(...rows.map(row => row[metric] || 0), 1);
-      const minDate = rows[0]?.date || "";
-      const maxDate = rows[rows.length - 1]?.date || "";
+      const minDate = rows[0]?.startDate || rows[0]?.date || "";
+      const maxDate = rows[rows.length - 1]?.endDate || rows[rows.length - 1]?.date || "";
 
       const points = rows.map((row, index) => {
         const x = pad.left + (rows.length === 1 ? innerW / 2 : index * innerW / (rows.length - 1));
@@ -640,7 +908,7 @@
         return { x, y, row };
       });
 
-      const rangePoints = points.filter(point => point.row.date >= startDate && point.row.date <= endDate);
+      const rangePoints = points.filter(point => (point.row.endDate || point.row.date) >= startDate && (point.row.startDate || point.row.date) <= endDate);
       const rangeStart = rangePoints[0] || points[points.length - 1];
       const rangeEnd = rangePoints[rangePoints.length - 1] || rangeStart;
       const gridLines = [0, 0.25, 0.5, 0.75, 1].map(step => {
@@ -753,6 +1021,7 @@
 
       const rows = currentRows();
       const selectedRows = rangeRows(rows, selectedRange.start, selectedRange.end);
+      const trendRows = aggregateTrendRows(rows, granularitySelect.value);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
         salesItems: total.salesItems + (row.salesItems || 0),
@@ -776,12 +1045,14 @@
         ? `<span class="highlight">${fmtYen.format(topItem.sales)}</span> from ${fmtNum.format(topItem.salesItems)} item(s)`
         : "No sales in the top-item table";
 
-      document.getElementById("chartTitle").textContent = `Daily ${metricLabel(metric)} for ${genreLabel(genre)}`;
+      const granularityLabel = metricLabel(granularitySelect.value).replace("day", "Daily").replace("week", "Weekly").replace("month", "Monthly");
+      document.getElementById("chartTitle").textContent = `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = `The shaded area marks ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = rows.length ? `${rows[0].date} to ${rows[rows.length - 1].date}` : "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
 
-      drawTrend(rows, selectedRange.start, selectedRange.end, metric);
+      syncPresetButtons();
+      drawTrend(trendRows, selectedRange.start, selectedRange.end, metric);
       renderTable(items);
       renderTopDays(rows);
     }
@@ -796,11 +1067,52 @@
       endDateInput.value = "";
       update();
     });
-    startDateInput.addEventListener("change", update);
-    endDateInput.addEventListener("change", update);
+    rangePresetSelect.addEventListener("change", () => {
+      if (rangePresetSelect.value === "custom") {
+        datePopover.classList.add("open");
+      } else {
+        setRangeFromPreset(rangePresetSelect.value);
+        datePopover.classList.remove("open");
+        update();
+      }
+    });
+    document.querySelectorAll("[data-preset]").forEach(button => {
+      button.addEventListener("click", () => {
+        rangePresetSelect.value = button.dataset.preset;
+        setRangeFromPreset(button.dataset.preset);
+        datePopover.classList.remove("open");
+        update();
+      });
+    });
+    customRangeToggle.addEventListener("click", () => {
+      datePopover.classList.toggle("open");
+    });
+    clearCustomRange.addEventListener("click", () => {
+      rangePresetSelect.value = "6m";
+      setRangeFromPreset("6m");
+      datePopover.classList.remove("open");
+      update();
+    });
+    applyCustomRange.addEventListener("click", () => {
+      rangePresetSelect.value = "custom";
+      datePopover.classList.remove("open");
+      update();
+    });
+    startDateInput.addEventListener("change", () => {
+      rangePresetSelect.value = "custom";
+    });
+    endDateInput.addEventListener("change", () => {
+      rangePresetSelect.value = "custom";
+    });
     metricSelect.addEventListener("change", update);
+    granularitySelect.addEventListener("change", update);
     prevDay.addEventListener("click", () => moveDate(-1));
     nextDay.addEventListener("click", () => moveDate(1));
+    document.addEventListener("click", event => {
+      if (!datePopover.contains(event.target) && !customRangeToggle.contains(event.target) && !rangePresetSelect.contains(event.target)) {
+        datePopover.classList.remove("open");
+      }
+    });
     window.addEventListener("resize", update);
   </script>
 </body>
