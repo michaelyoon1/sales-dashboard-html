@@ -869,9 +869,9 @@
     </section>
   </main>
 
-  <script src="top_items_daily_data.js?v=all-genres-items-20260604"></script>
-  <script src="projected_market_data.js?v=predicted-sales-20260604"></script>
-  <script src="event_impact_data.js?v=events-20260604"></script>
+  <script src="top_items_daily_data.js?v=downloads-source-20260604"></script>
+  <script src="projected_market_data.js?v=downloads-predicted-20260604"></script>
+  <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
     const projectedMarketData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
@@ -958,8 +958,7 @@
     }
 
     function genreLabel(genreId) {
-      const name = genreName(genreId);
-      return name === `Genre ${genreId}` ? name : `${name} (${genreId})`;
+      return genreName(genreId);
     }
 
     function formatMetric(value, metric) {
@@ -978,7 +977,8 @@
 
     function setGenreOptions() {
       genreSelect.innerHTML = data.genres.map((genre, index) => {
-        const label = `${genre.name || `Genre ${genre.genre}`} (${genre.genre}) - ${fmtYen.format(genre.sales)}`;
+        const name = genre.name || `Unmapped genre ${genre.genre}`;
+        const label = `${name} - ${fmtYen.format(genre.sales)}`;
         return `<option value="${genre.genre}">${index + 1}. ${label}</option>`;
       }).join("");
     }
