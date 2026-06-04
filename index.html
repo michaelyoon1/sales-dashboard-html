@@ -1,0 +1,1487 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sales Analysis Dashboard</title>
+  <style>
+    :root {
+      --bg: #f7f8f5;
+      --ink: #1e2528;
+      --muted: #5f6b70;
+      --line: #d9dfdc;
+      --panel: #ffffff;
+      --green: #1f7a5c;
+      --blue: #2f6faa;
+      --gold: #b7791f;
+      --rose: #b84d5a;
+      --shadow: 0 14px 35px rgba(30, 37, 40, .08);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #fff 0%, #f7f8f5 100%);
+    }
+    .wrap { width: min(1180px, calc(100vw - 32px)); margin: 0 auto; }
+    .top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 30px 0 24px;
+    }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 46px); line-height: 1.05; font-weight: 790; }
+    .sub { margin: 12px 0 0; color: var(--muted); max-width: 760px; font-size: 15px; line-height: 1.55; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+    label { color: var(--muted); font-size: 13px; font-weight: 700; }
+    select, button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 0 12px;
+      font: inherit;
+      font-size: 14px;
+    }
+    button { cursor: pointer; font-weight: 750; }
+    button.active { background: var(--ink); color: white; border-color: var(--ink); }
+    .toggles { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 30px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .toggle input { accent-color: var(--green); }
+    main { padding: 24px 0 38px; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .kpi { padding: 16px; min-height: 116px; }
+    .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; font-weight: 800; }
+    .kpi .value { margin-top: 10px; font-size: clamp(23px, 3vw, 34px); font-weight: 820; line-height: 1; }
+    .kpi .note { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.35; }
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .75fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .panel { padding: 18px; }
+    .panel h2 { margin: 0 0 6px; font-size: 18px; line-height: 1.2; }
+    .panel p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .chart { margin-top: 14px; width: 100%; height: 330px; overflow: visible; }
+    .short { height: 260px; }
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; color: var(--muted); font-size: 13px; }
+    .dot { width: 10px; height: 10px; display: inline-block; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }
+    .event-dot { fill: var(--rose); stroke: #fff; stroke-width: 2; }
+    .insights { display: grid; gap: 10px; margin-top: 14px; }
+    .insight { border-left: 4px solid var(--green); background: #f4faf6; padding: 12px; border-radius: 4px; font-size: 13px; line-height: 1.45; color: #253331; }
+    .insight strong { display: block; margin-bottom: 3px; }
+    .finding-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .finding { border: 1px solid var(--line); border-radius: 7px; padding: 13px; background: #fbfcfa; min-height: 126px; }
+    .finding strong { display: block; margin-bottom: 7px; font-size: 13px; }
+    .finding p { font-size: 12px; line-height: 1.45; }
+    .report-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .report-kpi { border: 1px solid var(--line); border-radius: 7px; padding: 11px; background: #fbfcfa; }
+    .report-kpi .value { margin-top: 5px; font-size: 19px; font-weight: 820; }
+    .report-kpi .label { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .report-kpi .delta { margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .mini-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .mini-controls select { min-height: 34px; font-size: 13px; }
+    .event-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .event-stat { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fbfcfa; }
+    .event-stat strong { display: block; font-size: 18px; line-height: 1; }
+    .event-stat span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.3; }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; max-width: 320px; }
+    .tag { display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px; border-radius: 999px; background: #f7ecee; color: #87343e; font-size: 12px; font-weight: 750; }
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; }
+    td:last-child, th:last-child { text-align: right; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre {
+      white-space: pre-wrap;
+      margin: 12px 0 0;
+      padding: 13px;
+      background: #1e2528;
+      color: #eef4ef;
+      border-radius: 7px;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow: auto;
+    }
+    .sources {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      padding-top: 12px;
+    }
+    .bar-label { fill: var(--muted); font-size: 11px; }
+    .axis { stroke: #cbd3cf; stroke-width: 1; }
+    .tick { fill: #637075; font-size: 11px; }
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      background: rgba(30, 37, 40, .94);
+      color: #fff;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.35;
+      transform: translate(-50%, calc(-100% - 12px));
+      opacity: 0;
+      transition: opacity .12s ease;
+      z-index: 20;
+      max-width: 230px;
+    }
+    .forecast-chart { height: 360px; }
+    .rank-chart { height: 320px; }
+    .quality-chart { height: 330px; }
+    .comparison-chart { height: 330px; }
+    @media (max-width: 900px) {
+      .top, .grid, .two { grid-template-columns: 1fr; }
+      .controls { justify-content: flex-start; }
+      .kpis { grid-template-columns: 1fr 1fr; }
+      .finding-grid, .report-kpis { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .wrap { width: min(100vw - 22px, 1180px); }
+      .kpis { grid-template-columns: 1fr; }
+      .finding-grid, .report-kpis { grid-template-columns: 1fr; }
+      .chart { height: 270px; }
+      .panel { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap top">
+      <div>
+        <h1>Sales Analysis Dashboard</h1>
+        <p class="sub">Organized from the DuckDB/SCP chat context and the CSV exports found locally. Use this to explain the big picture, then focus on 2025 monthly trends and customer mix.</p>
+      </div>
+      <div class="controls" aria-label="Dashboard controls">
+        <label for="yearSelect">Focus year</label>
+        <select id="yearSelect"></select>
+        <button id="allBtn" type="button">All years</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <section class="kpis" aria-label="Key metrics">
+      <article class="card kpi"><div class="label">Selected sales</div><div class="value" id="kpiSales"></div><div class="note" id="kpiSalesNote"></div></article>
+      <article class="card kpi"><div class="label">Best month</div><div class="value" id="kpiBest"></div><div class="note" id="kpiBestNote"></div></article>
+      <article class="card kpi"><div class="label">Monthly average</div><div class="value" id="kpiAvg"></div><div class="note">Mean sales for the current view.</div></article>
+      <article class="card kpi"><div class="label">Repeat share</div><div class="value" id="kpiRepeat"></div><div class="note" id="kpiRepeatNote"></div></article>
+    </section>
+
+    <section class="card panel">
+      <h2>Report Findings</h2>
+      <p>Additional findings incorporated from <code>sales_report.jsx</code>. These summarize the broader sales report and are kept separate from the current CSV/model panels.</p>
+      <div class="report-kpis" id="reportKpis"></div>
+      <div class="finding-grid" id="reportFindings"></div>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Sales By Ranking Position</h2>
+        <p>Daily sales joined from ranking parquet files and sales parquet files. Use this to inspect how much revenue different ranking positions drive over time.</p>
+        <div class="mini-controls" aria-label="Rank position controls">
+          <label for="rankBucketSelect">Rank bucket</label>
+          <select id="rankBucketSelect"></select>
+          <label for="rankYearSelect">Year</label>
+          <select id="rankYearSelect"></select>
+          <label for="rankMetricSelect">Metric</label>
+          <select id="rankMetricSelect">
+            <option value="sales">Sales</option>
+            <option value="salesItems">Sales items</option>
+            <option value="pv">PV</option>
+          </select>
+        </div>
+        <svg id="rankPositionChart" class="chart rank-chart" role="img" aria-label="Daily sales by ranking position chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--blue)"></i>Selected rank bucket</span>
+        </div>
+      </article>
+      <aside class="card panel">
+        <h2>Ranking Position Summary</h2>
+        <p>Exact rank totals for rank 1 through rank 10 across matched ranking and sales records.</p>
+        <table>
+          <thead><tr><th>Rank</th><th>Total Sales</th><th>Items</th><th>PV</th></tr></thead>
+          <tbody id="exactRankRows"></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Day</th><th>Selected Metric</th><th>Matched Items</th></tr></thead>
+          <tbody id="rankDayRows"></tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Sales vs PV vs CVR</h2>
+        <p>Connected monthly line graph showing whether revenue changes are driven by traffic, conversion, or order value.</p>
+        <div class="mini-controls" aria-label="Sales quality controls">
+          <label for="qualityMetricSelect">Primary metric</label>
+          <select id="qualityMetricSelect">
+            <option value="sales">Sales</option>
+            <option value="pv">PV</option>
+            <option value="cvr">CVR</option>
+            <option value="avgOrderValue">Avg order value</option>
+          </select>
+          <label for="qualityYearSelect">Year</label>
+          <select id="qualityYearSelect"></select>
+        </div>
+        <svg id="qualityChart" class="chart quality-chart" role="img" aria-label="Sales versus PV versus CVR line chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--green)"></i>Sales</span>
+          <span><i class="dot" style="background:var(--blue)"></i>PV</span>
+          <span><i class="dot" style="background:var(--rose)"></i>CVR</span>
+        </div>
+      </article>
+      <aside class="card panel">
+        <h2>Traffic Quality Summary</h2>
+        <p>Use this to separate high traffic from high conversion.</p>
+        <div class="event-summary" id="qualitySummary"></div>
+        <table>
+          <thead><tr><th>Month</th><th>Sales</th><th>PV</th><th>CVR</th></tr></thead>
+          <tbody id="qualityRows"></tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Platform Comparison</h2>
+        <p>Compare PC, App, and Mobile performance by sales, PV, CVR, sales items, or average order value.</p>
+        <div class="mini-controls" aria-label="Platform comparison controls">
+          <label for="platformSelect">Platform</label>
+          <select id="platformSelect">
+            <option value="all">All platforms</option>
+            <option value="PC">PC</option>
+            <option value="App">App</option>
+            <option value="Mobile">Mobile</option>
+          </select>
+          <label for="platformMetricSelect">Metric</label>
+          <select id="platformMetricSelect">
+            <option value="sales">Sales</option>
+            <option value="pv">PV</option>
+            <option value="cvr">CVR</option>
+            <option value="salesItems">Sales items</option>
+            <option value="avgOrderValue">Avg order value</option>
+          </select>
+          <label for="platformYearSelect">Year</label>
+          <select id="platformYearSelect"></select>
+        </div>
+        <svg id="platformChart" class="chart comparison-chart" role="img" aria-label="Platform comparison line chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--green)"></i>PC</span>
+          <span><i class="dot" style="background:var(--blue)"></i>App</span>
+          <span><i class="dot" style="background:var(--rose)"></i>Mobile</span>
+        </div>
+      </article>
+      <aside class="card panel">
+        <h2>Platform Summary</h2>
+        <p>Totals for the selected year and metric context.</p>
+        <table>
+          <thead><tr><th>Platform</th><th>Sales</th><th>PV</th><th>CVR</th></tr></thead>
+          <tbody id="platformRows"></tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Genre Comparison</h2>
+        <p>Select a genre to see monthly sales, traffic, conversion, item count, and shop count.</p>
+        <div class="mini-controls" aria-label="Genre comparison controls">
+          <label for="genreSelect">Genre</label>
+          <select id="genreSelect"></select>
+          <label for="genreMetricSelect">Metric</label>
+          <select id="genreMetricSelect">
+            <option value="sales">Sales</option>
+            <option value="pv">PV</option>
+            <option value="cvr">CVR</option>
+            <option value="salesItems">Sales items</option>
+            <option value="avgOrderValue">Avg order value</option>
+          </select>
+          <label for="genreYearSelect">Year</label>
+          <select id="genreYearSelect"></select>
+        </div>
+        <svg id="genreChart" class="chart comparison-chart" role="img" aria-label="Genre comparison line chart"></svg>
+      </article>
+      <aside class="card panel">
+        <h2>Genre Summary</h2>
+        <p>Top genres by total sales, with traffic and conversion context.</p>
+        <table>
+          <thead><tr><th>Genre</th><th>Sales</th><th>PV</th><th>CVR</th></tr></thead>
+          <tbody id="genreRows"></tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Monthly Sales Trend</h2>
+        <p id="trendSubtitle"></p>
+        <svg id="salesChart" class="chart" role="img" aria-label="Monthly sales line chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--green)"></i>Total sales</span>
+          <span><i class="dot" style="background:var(--rose)"></i>Sale event month</span>
+        </div>
+      </article>
+      <aside class="card panel">
+        <h2>Reading The Story</h2>
+        <p>Use these as talking points for a supervisor update.</p>
+        <div class="insights" id="insights"></div>
+      </aside>
+    </section>
+
+    <section class="two">
+      <article class="card panel">
+        <h2>Yearly Revenue</h2>
+        <p>Useful for showing how 2025 compares against prior years.</p>
+        <svg id="yearChart" class="chart short" role="img" aria-label="Revenue by year bar chart"></svg>
+      </article>
+      <article class="card panel">
+        <h2>New vs Repeat Customer Activity</h2>
+        <p>These columns come from <code>sales_items_new_user</code> and <code>sales_items_repeat_user</code>.</p>
+        <svg id="mixChart" class="chart short" role="img" aria-label="Customer mix stacked bar chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--blue)"></i>New user sales items</span>
+          <span><i class="dot" style="background:var(--rose)"></i>Repeat user sales items</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="two">
+      <article class="card panel">
+        <h2>Campaign Calendar</h2>
+        <p id="eventSubtitle"></p>
+        <div class="event-summary" id="eventSummary"></div>
+        <table>
+          <thead><tr><th>Event</th><th>Start</th><th>End</th></tr></thead>
+          <tbody id="eventRows"></tbody>
+        </table>
+      </article>
+      <article class="card panel">
+        <h2>Event Notes</h2>
+        <p>Event markers are assigned to every month that overlaps a campaign window, so longer campaigns such as supersale and black-friday are counted across the dates they actually cover.</p>
+        <div class="insights" id="eventInsights"></div>
+      </article>
+    </section>
+
+    <section class="two">
+      <article class="card panel">
+        <h2>Report Annual Outlook</h2>
+        <p>Annual actual/projected totals from the JSX report.</p>
+        <table>
+          <thead><tr><th>Year</th><th>Total Sales</th><th>YoY</th><th>Type</th></tr></thead>
+          <tbody id="reportAnnualRows"></tbody>
+        </table>
+      </article>
+      <article class="card panel">
+        <h2>Report Event Impact</h2>
+        <p>Top positive and negative event lift findings from the report.</p>
+        <table>
+          <thead><tr><th>Event</th><th>Lift</th></tr></thead>
+          <tbody id="reportEventRows"></tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card panel">
+        <h2>Actual vs Predicted Sales</h2>
+        <p id="forecastSubtitle">Predicted sales are backtested across earlier years, then extended into the future forecast. The actual line sits on top so you can compare model fit by month.</p>
+        <div class="toggles" aria-label="Forecast controls">
+          <label class="toggle"><input id="showActual" type="checkbox" checked> Actual</label>
+          <label class="toggle"><input id="showBaseline" type="checkbox" checked> Baseline predicted</label>
+          <label class="toggle"><input id="showEventForecast" type="checkbox" checked> Event-adjusted predicted</label>
+        </div>
+        <svg id="forecastChart" class="chart forecast-chart" role="img" aria-label="Actual versus predicted sales chart"></svg>
+        <div class="legend">
+          <span><i class="dot" style="background:var(--green)"></i>Actual</span>
+          <span><i class="dot" style="background:var(--gold)"></i>Baseline predicted</span>
+          <span><i class="dot" style="background:var(--rose)"></i>Event-adjusted predicted</span>
+        </div>
+      </article>
+      <aside class="card panel">
+        <h2>Forecast Detail</h2>
+        <p>Model is trained on earlier data, then compared against later actual months before forecasting forward.</p>
+        <div class="event-summary" id="modelSummary"></div>
+        <table>
+          <thead><tr><th>Month</th><th>Baseline</th><th>Event Adj.</th><th>Events</th></tr></thead>
+          <tbody id="forecastRows"></tbody>
+        </table>
+        <table>
+          <thead><tr><th>Event</th><th>Measured Lift</th></tr></thead>
+          <tbody id="liftRows"></tbody>
+        </table>
+      </aside>
+    </section>
+
+    <section class="two">
+      <article class="card panel">
+        <h2>Best-Selling Items</h2>
+        <p>Highest grossing items calculated directly from the sales parquet files.</p>
+        <table>
+          <thead><tr><th>Rank</th><th>Item</th><th>Genre</th><th>Sales</th><th>Units</th><th>PV</th><th>Rating</th></tr></thead>
+          <tbody id="reportItemRows"></tbody>
+        </table>
+      </article>
+      <article class="card panel">
+        <h2>Top Shops From Report</h2>
+        <p>Highest grossing shops surfaced in the JSX report.</p>
+        <table>
+          <thead><tr><th>Rank</th><th>Shop</th><th>Sales</th><th>Units</th><th>Items</th></tr></thead>
+          <tbody id="reportShopRows"></tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="two">
+      <article class="card panel">
+        <h2>Monthly Detail</h2>
+        <p>The rows below update with the selected year.</p>
+        <table>
+          <thead><tr><th>Month</th><th>Total Sales</th><th>Events</th><th>New</th><th>Repeat</th><th>Repeat %</th></tr></thead>
+          <tbody id="detailRows"></tbody>
+        </table>
+      </article>
+      <article class="card panel">
+        <h2>Actionable Recommendations</h2>
+        <p>Business actions suggested by the ranking, event, traffic, and forecast views.</p>
+        <div class="insights">
+          <div class="insight"><strong>Protect high-rank visibility</strong>Keep rank 1-10 placements active during months where sales and PV rise together, especially around major event windows.</div>
+          <div class="insight"><strong>Separate traffic problems from conversion problems</strong>If PV rises but CVR stays flat, improve product pages or pricing. If CVR rises but PV is weak, prioritize exposure and campaign placement.</div>
+          <div class="insight"><strong>Use December differently</strong>December behaves unlike normal months. Treat it as a separate planning period for inventory, ranking placement, and event timing.</div>
+          <div class="insight"><strong>Investigate negative-lift events</strong>Some events may be scheduled during slow periods or attracting low-intent traffic. Compare PV and CVR before deciding to cut them.</div>
+        </div>
+      </article>
+    </section>
+    <p class="sources">Sources: shared ChatGPT conversations on DuckDB export/SCP workflow and local CSV files <code>/Users/michaelyoon/monthly_sales.csv</code>, <code>/Users/michaelyoon/2025-monthly_sales.csv</code>, and <code>/Users/michaelyoon/customer_mix_monthly.csv</code>.</p>
+  </main>
+  <div id="tooltip" class="tooltip"></div>
+
+  <script src="model_data.js"></script>
+  <script src="rank_position_data.js"></script>
+  <script>
+    const monthly = [
+      ["2019-07-01",0],["2019-08-01",0],["2019-11-01",0],["2020-01-01",0],["2020-02-01",229900],["2020-03-01",2008620],["2020-04-01",225880],["2020-05-01",0],["2020-06-01",254000],["2020-07-01",432600],["2020-08-01",1787440],["2020-09-01",1277300],["2020-10-01",1300120],["2020-11-01",1140000],["2020-12-01",817590],
+      ["2021-01-01",556800],["2021-02-01",122600],["2021-03-01",962180],["2021-04-01",535920],["2021-05-01",92800],["2021-06-01",721540],["2021-07-01",183500],["2021-08-01",0],["2021-09-01",294600],["2021-10-01",1152350],["2021-11-01",241600],["2021-12-01",0],
+      ["2022-01-01",0],["2022-02-01",0],["2022-03-01",1280378],["2022-04-01",605360],["2022-05-01",286260],["2022-06-01",225700],["2022-07-01",843047],["2022-08-01",739200],["2022-09-01",3299519],["2022-10-01",3698493],["2022-11-01",2677119],["2022-12-01",2514899],
+      ["2023-01-01",1824350],["2023-02-01",1677107],["2023-03-01",2671637],["2023-04-01",2044659],["2023-05-01",1167296],["2023-06-01",1086728],["2023-07-01",280280],["2023-08-01",1161779],["2023-09-01",657700],["2023-10-01",1284497],["2023-11-01",669526],["2023-12-01",3302146],
+      ["2024-01-01",1761593],["2024-02-01",2344638],["2024-03-01",3168759],["2024-04-01",2681340],["2024-05-01",1801820],["2024-06-01",2915600],["2024-07-01",2849647],["2024-08-01",1972740],["2024-09-01",2799190],["2024-10-01",11095965],["2024-11-01",18185144],["2024-12-01",33778460],
+      ["2025-01-01",13590980],["2025-02-01",20907730],["2025-03-01",37222020],["2025-04-01",31495040],["2025-05-01",18292760],["2025-06-01",23456370],["2025-07-01",21605580],["2025-08-01",20835980],["2025-09-01",22942570],["2025-10-01",32274540],["2025-11-01",23932600],["2025-12-01",38025100],
+      ["2026-01-01",21861800],["2026-02-01",37480600],["2026-03-01",46674780],["2026-04-01",4841880],["2026-05-01",3481600]
+    ].map(([month,total]) => ({ month, total }));
+
+    const mix = [
+      ["2019-07-01",0,0],["2019-08-01",0,0],["2019-11-01",0,0],["2020-01-01",0,0],["2020-02-01",1,0],["2020-03-01",10,0],["2020-04-01",1,0],["2020-05-01",0,0],["2020-06-01",1,0],["2020-07-01",4,0],["2020-08-01",16,0],["2020-09-01",18,0],["2020-10-01",18,0],["2020-11-01",12,0],["2020-12-01",8,1],
+      ["2021-01-01",7,0],["2021-02-01",1,1],["2021-03-01",29,0],["2021-04-01",5,0],["2021-05-01",0,0],["2021-06-01",6,1],["2021-07-01",2,0],["2021-08-01",0,0],["2021-09-01",1,0],["2021-10-01",10,0],["2021-11-01",2,0],["2021-12-01",0,0],
+      ["2022-01-01",0,0],["2022-02-01",0,0],["2022-03-01",12,0],["2022-04-01",9,0],["2022-05-01",6,0],["2022-06-01",4,0],["2022-07-01",9,0],["2022-08-01",15,0],["2022-09-01",111,9],["2022-10-01",102,9],["2022-11-01",69,7],["2022-12-01",41,1],
+      ["2023-01-01",90,10],["2023-02-01",65,4],["2023-03-01",81,8],["2023-04-01",76,6],["2023-05-01",31,5],["2023-06-01",16,4],["2023-07-01",3,0],["2023-08-01",10,0],["2023-09-01",8,0],["2023-10-01",16,0],["2023-11-01",7,1],["2023-12-01",42,5],
+      ["2024-01-01",37,5],["2024-02-01",46,5],["2024-03-01",64,7],["2024-04-01",60,5],["2024-05-01",37,5],["2024-06-01",67,2],["2024-07-01",58,3],["2024-08-01",48,4],["2024-09-01",58,4],["2024-10-01",113,12],["2024-11-01",152,14],["2024-12-01",197,12],
+      ["2025-01-01",110,20],["2025-02-01",219,19],["2025-03-01",366,29],["2025-04-01",285,29],["2025-05-01",167,12],["2025-06-01",207,17],["2025-07-01",199,23],["2025-08-01",195,14],["2025-09-01",203,22],["2025-10-01",300,25],["2025-11-01",235,12],["2025-12-01",357,24],
+      ["2026-01-01",199,15],["2026-02-01",315,18],["2026-03-01",369,22],["2026-04-01",79,9],["2026-05-01",56,4]
+    ].map(([month,newUser,repeat]) => ({ month, newUser, repeat }));
+
+    const namedEvents = [
+      ["supersale", "2017-03-04 20:00:00", "2017-03-11 01:59:00"],
+      ["eagles", "2026-11-14 10:00:00", "2026-11-16 23:59:00"],
+      ["ichiba-day", "2026-11-18 00:00:00", "2026-11-18 23:59:00"],
+      ["black-friday", "2026-11-20 20:00:00", "2026-11-27 01:59:00"],
+      ["wonderful-day", "2026-12-01 00:00:00", "2026-12-01 23:59:00"],
+      ["supersale", "2026-12-04 20:00:00", "2026-12-11 01:59:00"],
+      ["point-back", "2026-12-13 10:00:00", "2026-12-17 09:59:00"],
+      ["ichiba-day", "2026-12-18 00:00:00", "2026-12-18 23:59:00"],
+      ["thank-you", "2026-12-19 20:00:00", "2026-12-26 01:59:00"]
+    ];
+    const zeroFiveEvents = [];
+    for (let year = 2017; year <= 2026; year += 1) {
+      for (let month = 1; month <= 12; month += 1) {
+        [5, 10, 15, 20, 25, 30].forEach(day => {
+          const date = new Date(year, month - 1, day);
+          if (date.getMonth() === month - 1) {
+            const yyyy = String(year);
+            const mm = String(month).padStart(2, "0");
+            const dd = String(day).padStart(2, "0");
+            zeroFiveEvents.push(["zero-five", `${yyyy}-${mm}-${dd} 00:00:00`, `${yyyy}-${mm}-${dd} 23:59:00`]);
+          }
+        });
+      }
+    }
+    const campaignEvents = [...zeroFiveEvents, ...namedEvents]
+      .map(([name, start, end]) => ({
+        name,
+        start,
+        end,
+        startDate: new Date(start.replace(" ", "T")),
+        endDate: new Date(end.replace(" ", "T"))
+      }))
+      .sort((a, b) => a.startDate - b.startDate || a.name.localeCompare(b.name));
+
+    const forecast = [
+      ["2026-06-01",3687826,3695201,0.2,"zero-five"],
+      ["2026-07-01",2837754,2843247,0.19,"zero-five"],
+      ["2026-08-01",3444628,3451295,0.19,"zero-five"],
+      ["2026-09-01",3387679,3394454,0.2,"zero-five"],
+      ["2026-10-01",5503980,5514632,0.19,"zero-five"],
+      ["2026-11-01",5074982,5333806,5.1,"black-friday, eagles, ichiba-day, zero-five"],
+      ["2026-12-01",10196965,11216662,10.0,"ichiba-day, point-back, supersale, thank-you, wonderful-day, zero-five"],
+      ["2027-01-01",5147418,5157381,0.19,"zero-five"],
+      ["2027-02-01",6799279,6811421,0.18,"zero-five"],
+      ["2027-03-01",8727492,8744384,0.19,"zero-five"],
+      ["2027-04-01",3939936,3947816,0.2,"zero-five"],
+      ["2027-05-01",2721608,2726876,0.19,"zero-five"]
+    ].map(([month, baseline, eventAdjusted, adjustment, events]) => ({ month, baseline, eventAdjusted, adjustment, events }));
+
+    const reportKpis = [
+      ["2025 Actual", "¥13.9B", ""],
+      ["2026 Projected", "¥16.4B", "+18.1% vs 2025"],
+      ["2027 Projected", "¥14.2B", "-13.6% vs 2026"],
+      ["Peak Month", "Dec", "3-5x avg"],
+      ["Top Event Lift", "+149%", "Fathers/Mothers Day"]
+    ];
+    const reportFindings = [
+      ["2023 Breakout", "Sales tripled from ¥3.3B in 2022 to ¥11.5B in 2023, then grew another 31% to ¥15.0B in 2024."],
+      ["December Dominance", "December consistently generates 3-5x the monthly average. In 2024, December alone accounted for ¥3.3B, or 22% of the full year."],
+      ["Events Drive Lift", "Fathers Day and Mothers Day were reported as the strongest lifts at +149%, followed by zero-five and Black Friday."],
+      ["Top Item Concentration", "Item #82872191 generated ¥2.2B across all time, 54% more than the #2 item, with a 4.75 average rating."],
+      ["Shop Strategy Split", "Shop #23590 led with ¥4.8B and 11,954 unique items, while shop #28239 reached ¥3.25B with only 59 items."],
+      ["2026 Projection", "The report projects 2026 at ¥16.4B, supported by Jan-May actuals plus a strong December forecast near ¥4.0B."]
+    ];
+    const reportAnnual = [
+      [2019,2820641401,"actual"],[2020,3870850692,"actual"],[2021,3839372438,"actual"],
+      [2022,3276613726,"actual"],[2023,11458239304,"actual"],[2024,15023358271,"actual"],
+      [2025,13899857448,"actual"],[2026,16417062912,"projected"],[2027,14170571980,"projected"]
+    ].map(([year,sales,type]) => ({ year, sales, type }));
+    const reportEventImpact = [
+      ["fathers-day",148.9],["mothers-day",148.9],["thank-you",123.3],["zero-five",118.1],
+      ["black-friday",88.1],["wonderful-day",56.6],["fashionthesale",43.7],["marathon",30.8],
+      ["ichiba-day",4.1],["point-back",-1.7],["eagles",-15.2],["39shop",-17.0],
+      ["supersale",-28.9],["thanks-giving",-45.9],["newyear-sale",-54.0],["singles-day",-69.1],
+      ["point-up",-80.0],["user-ranking",-80.4]
+    ].map(([name,lift]) => ({ name, lift }));
+    const reportTopItems = [
+      [1,"82872191","214012",2205649000,137580,4.75],
+      [2,"36345671","402788",1426734492,295032,4.25],
+      [3,"47816172","402788",834142163,180300,4.24],
+      [4,"59131140","567617",411285019,100022,4.53],
+      [5,"53203980","568495",400744900,19883,4.42]
+    ].map(([rank,item,genre,sales,units,rating]) => ({ rank,item,genre,sales,units,rating }));
+    const reportTopShops = [
+      [1,"23590","560202",4829615432,90259,11954],
+      [2,"28239","214012",3250355000,188664,59],
+      [3,"33561","402788",2670414534,601521,195],
+      [4,"525","567661",1905030123,221933,2679],
+      [5,"17303","301981",1460744414,19532,3621]
+    ].map(([rank,shop,genre,sales,units,items]) => ({ rank,shop,genre,sales,units,items }));
+
+    const money = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+    const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
+    const yen = value => value >= 1e9 ? `¥${(value / 1e9).toFixed(1)}B` : value >= 1e6 ? `¥${(value / 1e6).toFixed(0)}M` : `¥${money.format(value)}`;
+    const yenCompact = value => `¥${compact.format(value)}`;
+    const pct = value => `${(value * 100).toFixed(1)}%`;
+    const monthName = date => new Date(`${date}T00:00:00`).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    const shortDate = date => date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const yearOf = row => row.month.slice(0, 4);
+    const tooltip = document.getElementById("tooltip");
+    const years = [...new Set(monthly.map(yearOf))].filter(y => y !== "2019");
+    const yearSelect = document.getElementById("yearSelect");
+    const allBtn = document.getElementById("allBtn");
+    const showActual = document.getElementById("showActual");
+    const showBaseline = document.getElementById("showBaseline");
+    const showEventForecast = document.getElementById("showEventForecast");
+    const trainedModelRows = window.MODEL_DATA?.modelRows || null;
+    const trainedModelSummary = window.MODEL_DATA?.summary || null;
+    const rankPositionData = window.RANK_POSITION_DATA || { daily: [], exactRanks: [], buckets: [] };
+    const rankBucketSelect = document.getElementById("rankBucketSelect");
+    const rankYearSelect = document.getElementById("rankYearSelect");
+    const rankMetricSelect = document.getElementById("rankMetricSelect");
+    const qualityMetricSelect = document.getElementById("qualityMetricSelect");
+    const qualityYearSelect = document.getElementById("qualityYearSelect");
+    const platformSelect = document.getElementById("platformSelect");
+    const platformMetricSelect = document.getElementById("platformMetricSelect");
+    const platformYearSelect = document.getElementById("platformYearSelect");
+    const genreSelect = document.getElementById("genreSelect");
+    const genreMetricSelect = document.getElementById("genreMetricSelect");
+    const genreYearSelect = document.getElementById("genreYearSelect");
+    const eventLifts = {
+      "zero-five": 0.01,
+      "ichiba-day": 0.04,
+      "eagles": 0.05,
+      "point-back": 0.08,
+      "black-friday": 0.16,
+      "wonderful-day": 0.04,
+      "supersale": 0.18,
+      "thank-you": 0.14
+    };
+
+    years.forEach(year => {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year;
+      if (year === "2025") option.selected = true;
+      yearSelect.append(option);
+    });
+
+    rankPositionData.buckets.forEach(bucket => {
+      const option = document.createElement("option");
+      option.value = bucket;
+      option.textContent = bucket;
+      rankBucketSelect.append(option);
+    });
+    const rankYears = [...new Set(rankPositionData.daily.map(row => row.date.slice(0, 4)))].sort();
+    ["all", ...rankYears].forEach(year => {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year === "all" ? "All years" : year;
+      if (year === "2025") option.selected = true;
+      rankYearSelect.append(option);
+    });
+    const qualityYears = [...new Set((rankPositionData.salesQuality || []).map(row => row.month.slice(0, 4)))].sort();
+    ["all", ...qualityYears].forEach(year => {
+      const option = document.createElement("option");
+      option.value = year;
+      option.textContent = year === "all" ? "All years" : year;
+      if (year === "2025") option.selected = true;
+      qualityYearSelect.append(option);
+    });
+    const comparisonYears = [...new Set((rankPositionData.platformMonthly || []).map(row => row.month.slice(0, 4)))].sort();
+    ["all", ...comparisonYears].forEach(year => {
+      [platformYearSelect, genreYearSelect].forEach(select => {
+        const option = document.createElement("option");
+        option.value = year;
+        option.textContent = year === "all" ? "All years" : year;
+        if (year === "2025") option.selected = true;
+        select.append(option);
+      });
+    });
+    (rankPositionData.genreSummary || []).forEach((row, index) => {
+      const option = document.createElement("option");
+      option.value = row.genre;
+      option.textContent = `Genre ${row.genre} (${yen(row.sales)})`;
+      if (index === 0) option.selected = true;
+      genreSelect.append(option);
+    });
+
+    function sum(rows, key) { return rows.reduce((total, row) => total + row[key], 0); }
+    function selectedRows() {
+      const year = allBtn.classList.contains("active") ? "all" : yearSelect.value;
+      return year === "all" ? monthly : monthly.filter(row => yearOf(row) === year);
+    }
+    function selectedMix() {
+      const year = allBtn.classList.contains("active") ? "all" : yearSelect.value;
+      return year === "all" ? mix : mix.filter(row => yearOf(row) === year);
+    }
+    function selectedEvents() {
+      const year = allBtn.classList.contains("active") ? "all" : yearSelect.value;
+      return year === "all" ? campaignEvents : campaignEvents.filter(event => String(event.startDate.getFullYear()) === year || String(event.endDate.getFullYear()) === year);
+    }
+    function monthBounds(month) {
+      const start = new Date(`${month}T00:00:00`);
+      return { start, end: new Date(start.getFullYear(), start.getMonth() + 1, 0, 23, 59, 59) };
+    }
+    function eventsForMonth(month) {
+      const bounds = monthBounds(month);
+      return campaignEvents.filter(event => event.startDate <= bounds.end && event.endDate >= bounds.start);
+    }
+    function eventNames(events) {
+      return [...new Set(events.map(event => event.name))];
+    }
+    function eventTags(events, limit = 4) {
+      const names = eventNames(events);
+      if (!names.length) return '<span class="tag">none</span>';
+      const visible = names.slice(0, limit).map(name => `<span class="tag">${name}</span>`).join("");
+      return names.length > limit ? `${visible}<span class="tag">+${names.length - limit}</span>` : visible;
+    }
+    function avg(values) {
+      return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
+    }
+    function daysInMonth(month) {
+      const d = new Date(`${month}T00:00:00`);
+      return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    }
+    function eventAdjustment(month) {
+      return eventsForMonth(month).reduce((total, event) => {
+        const lift = eventLifts[event.name] || 0;
+        const eventDays = Math.max(1, Math.round((event.endDate - event.startDate) / 86400000) + 1);
+        return total + lift * Math.min(eventDays / daysInMonth(month), 1);
+      }, 0);
+    }
+    function backtestedPrediction(index) {
+      const target = monthly[index];
+      const prior = monthly.slice(0, index).filter(row => row.total > 0);
+      if (prior.length < 6) return null;
+
+      const targetMonth = target.month.slice(5, 7);
+      const sameMonth = prior.filter(row => row.month.slice(5, 7) === targetMonth).map(row => row.total);
+      const seasonalGuess = sameMonth.length ? avg(sameMonth) : avg(prior.map(row => row.total));
+      const recent = prior.slice(-12);
+      const first = recent[0].total;
+      const last = recent.at(-1).total;
+      const trend = recent.length > 1 ? (last - first) / (recent.length - 1) : 0;
+      const trendGuess = Math.max(0, last + trend);
+      const baseline = seasonalGuess * 0.65 + trendGuess * 0.35;
+      const adjustment = eventAdjustment(target.month);
+
+      return {
+        baseline,
+        eventAdjusted: baseline * (1 + adjustment),
+        adjustment: adjustment * 100,
+        events: eventNames(eventsForMonth(target.month)).join(", ") || "none"
+      };
+    }
+    function modelRows() {
+      if (trainedModelRows) {
+        return trainedModelRows.map(row => ({
+          month: row.month,
+          actual: row.actual,
+          baseline: row.baseline,
+          eventAdjusted: row.eventAdjusted,
+          adjustment: row.adjustment,
+          events: Array.isArray(row.events) ? row.events.join(", ") : row.events,
+          kind: row.kind
+        }));
+      }
+      const historical = monthly.map((row, index) => {
+        const prediction = backtestedPrediction(index);
+        return {
+          month: row.month,
+          actual: row.total,
+          baseline: prediction?.baseline ?? null,
+          eventAdjusted: prediction?.eventAdjusted ?? null,
+          adjustment: prediction?.adjustment ?? 0,
+          events: prediction?.events ?? "not enough prior data",
+          kind: "historical"
+        };
+      });
+      const future = forecast.map(row => ({
+        month: row.month,
+        actual: null,
+        baseline: row.baseline,
+        eventAdjusted: row.eventAdjusted,
+        adjustment: row.adjustment,
+        events: row.events,
+        kind: "future"
+      }));
+      return [...historical, ...future];
+    }
+    function selectedModelRows() {
+      const year = allBtn.classList.contains("active") ? "all" : yearSelect.value;
+      return year === "all" ? modelRows() : modelRows().filter(row => row.month.slice(0, 4) === year);
+    }
+    function groupByYear(rows, key) {
+      return years.map(year => ({ label: year, value: sum(rows.filter(row => yearOf(row) === year), key) }));
+    }
+    function showTip(event, lines) {
+      tooltip.innerHTML = lines.join("<br>");
+      tooltip.style.left = `${event.clientX}px`;
+      tooltip.style.top = `${event.clientY}px`;
+      tooltip.style.opacity = 1;
+    }
+    function hideTip() { tooltip.style.opacity = 0; }
+    function clear(svg) { while (svg.firstChild) svg.removeChild(svg.firstChild); }
+    function svgEl(name, attrs = {}) {
+      const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+      Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+      return el;
+    }
+    function svgText(attrs, value) {
+      const text = svgEl("text", attrs);
+      text.textContent = value;
+      return text;
+    }
+    function drawLine(svg, rows) {
+      clear(svg);
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 320;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 18, bottom: 44, left: 58 };
+      const max = Math.max(...rows.map(r => r.total), 1);
+      const x = i => pad.left + (rows.length === 1 ? 0 : i * (w - pad.left - pad.right) / (rows.length - 1));
+      const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
+      [0, .25, .5, .75, 1].forEach(t => {
+        const yy = y(max * t);
+        svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: yy, y2: yy, class: "axis" }));
+        svg.append(svgText({ x: 8, y: yy + 4, class: "tick" }, compact.format(max * t)));
+      });
+      const points = rows.map((row, i) => `${x(i)},${y(row.total)}`).join(" ");
+      svg.append(svgEl("polyline", { points, fill: "none", stroke: "var(--green)", "stroke-width": 3, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      rows.forEach((row, i) => {
+        const monthEvents = eventsForMonth(row.month);
+        if (monthEvents.length) {
+          const marker = svgEl("circle", { cx: x(i), cy: y(row.total) - 13, r: Math.min(8, 4 + eventNames(monthEvents).length), class: "event-dot" });
+          marker.addEventListener("mousemove", event => showTip(event, [monthName(row.month), `${monthEvents.length} campaign windows`, ...eventNames(monthEvents).slice(0, 5)]));
+          marker.addEventListener("mouseleave", hideTip);
+          svg.append(marker);
+        }
+        const dot = svgEl("circle", { cx: x(i), cy: y(row.total), r: 4, fill: "var(--green)" });
+        dot.addEventListener("mousemove", event => {
+          const names = eventNames(monthEvents);
+          showTip(event, [monthName(row.month), yen(row.total), names.length ? `Events: ${names.join(", ")}` : "No tracked events"]);
+        });
+        dot.addEventListener("mouseleave", hideTip);
+        svg.append(dot);
+      });
+      const stride = rows.length > 18 ? Math.ceil(rows.length / 10) : 1;
+      rows.forEach((row, i) => {
+        if (i % stride === 0 || i === rows.length - 1) {
+          svg.append(svgText(
+            { x: x(i), y: h - 15, class: "tick", "text-anchor": "middle" },
+            rows.length > 18 ? row.month.slice(0, 4) : monthName(row.month).split(" ")[0]
+          ));
+        }
+      });
+    }
+    function drawBars(svg, rows, color) {
+      clear(svg);
+      const w = svg.clientWidth || 600, h = svg.clientHeight || 260;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 16, bottom: 36, left: 58 };
+      const max = Math.max(...rows.map(r => r.value), 1);
+      const bw = (w - pad.left - pad.right) / rows.length * .62;
+      rows.forEach((row, i) => {
+        const x = pad.left + i * (w - pad.left - pad.right) / rows.length + bw * .3;
+        const bh = (row.value / max) * (h - pad.top - pad.bottom);
+        const y = h - pad.bottom - bh;
+        const rect = svgEl("rect", { x, y, width: bw, height: bh, rx: 4, fill: color });
+        rect.addEventListener("mousemove", event => showTip(event, [row.label, yen(row.value)]));
+        rect.addEventListener("mouseleave", hideTip);
+        svg.append(rect);
+        svg.append(svgText({ x: x + bw / 2, y: h - 13, class: "tick", "text-anchor": "middle" }, row.label));
+      });
+      svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: h - pad.bottom, y2: h - pad.bottom, class: "axis" }));
+    }
+    function drawMix(svg, rows) {
+      clear(svg);
+      const w = svg.clientWidth || 600, h = svg.clientHeight || 260;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 16, bottom: 42, left: 44 };
+      const max = Math.max(...rows.map(r => r.newUser + r.repeat), 1);
+      const bw = (w - pad.left - pad.right) / rows.length * .58;
+      rows.forEach((row, i) => {
+        const x = pad.left + i * (w - pad.left - pad.right) / rows.length + bw * .35;
+        const base = h - pad.bottom;
+        const newH = (row.newUser / max) * (h - pad.top - pad.bottom);
+        const repeatH = (row.repeat / max) * (h - pad.top - pad.bottom);
+        const newRect = svgEl("rect", { x, y: base - newH, width: bw, height: newH, rx: 3, fill: "var(--blue)" });
+        const repeatRect = svgEl("rect", { x, y: base - newH - repeatH, width: bw, height: repeatH, rx: 3, fill: "var(--rose)" });
+        [newRect, repeatRect].forEach(rect => {
+          rect.addEventListener("mousemove", event => showTip(event, [monthName(row.month), `New: ${money.format(row.newUser)}`, `Repeat: ${money.format(row.repeat)}`]));
+          rect.addEventListener("mouseleave", hideTip);
+          svg.append(rect);
+        });
+        const stride = rows.length > 14 ? Math.ceil(rows.length / 8) : 1;
+        if (i % stride === 0 || i === rows.length - 1) {
+          svg.append(svgText(
+            { x: x + bw / 2, y: h - 15, class: "tick", "text-anchor": "middle" },
+            rows.length > 14 ? row.month.slice(0, 4) : monthName(row.month).split(" ")[0]
+          ));
+        }
+      });
+      svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: h - pad.bottom, y2: h - pad.bottom, class: "axis" }));
+    }
+    function drawForecast(svg) {
+      clear(svg);
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 360;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 18, bottom: 48, left: 58 };
+      const rows = selectedModelRows();
+      const values = rows.flatMap(row => [row.actual, row.baseline, row.eventAdjusted]).filter(value => value !== null && Number.isFinite(value));
+      const max = Math.max(...values, 1);
+      const timeline = rows;
+      const x = i => pad.left + (timeline.length === 1 ? 0 : i * (w - pad.left - pad.right) / (timeline.length - 1));
+      const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
+      const linePath = key => rows
+        .map((row, i) => row[key] === null ? null : `${x(i)},${y(row[key])}`)
+        .filter(Boolean)
+        .join(" ");
+
+      [0, .25, .5, .75, 1].forEach(t => {
+        const yy = y(max * t);
+        svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: yy, y2: yy, class: "axis" }));
+        svg.append(svgText({ x: 8, y: yy + 4, class: "tick" }, compact.format(max * t)));
+      });
+
+      if (showBaseline.checked) {
+        svg.append(svgEl("polyline", { points: linePath("baseline"), fill: "none", stroke: "var(--gold)", "stroke-width": 3, "stroke-dasharray": "5 6", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+      if (showEventForecast.checked) {
+        svg.append(svgEl("polyline", { points: linePath("eventAdjusted"), fill: "none", stroke: "var(--rose)", "stroke-width": 3, "stroke-dasharray": "8 7", "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+      if (showActual.checked) {
+        svg.append(svgEl("polyline", { points: linePath("actual"), fill: "none", stroke: "var(--green)", "stroke-width": 3.5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+      }
+
+      rows.forEach((row, i) => {
+        if (i % Math.ceil(rows.length / 11) === 0 || i === rows.length - 1) {
+          svg.append(svgText({ x: x(i), y: h - 16, class: "tick", "text-anchor": "middle" }, monthName(row.month)));
+        }
+      });
+
+      const splitIndex = rows.findIndex(row => row.kind === "future");
+      if (splitIndex > 0) {
+        const splitX = x(splitIndex);
+        svg.append(svgEl("line", { x1: splitX, x2: splitX, y1: pad.top, y2: h - pad.bottom, stroke: "#9aa6a1", "stroke-dasharray": "4 6" }));
+        svg.append(svgText({ x: splitX + 8, y: pad.top + 12, class: "tick" }, "future forecast"));
+      }
+
+      function addPoints(key, color, label) {
+        rows.forEach((row, i) => {
+          if (row[key] === null) return;
+          const circle = svgEl("circle", { cx: x(i), cy: y(row[key]), r: row.kind === "future" ? 4.5 : 3.8, fill: color });
+          circle.addEventListener("mousemove", event => {
+            const lines = [monthName(row.month), `${label}: ${yen(row[key])}`];
+            if (row.actual !== null && key !== "actual") lines.push(`Actual: ${yen(row.actual)}`);
+            if (row.events) lines.push(`Events: ${row.events}`);
+            if (row.adjustment !== undefined) lines.push(`Event adjustment: ${row.adjustment.toFixed(2)}%`);
+            lines.push(row.kind === "future" ? "Future forecast" : "Historical backtest");
+            showTip(event, lines);
+          });
+          circle.addEventListener("mouseleave", hideTip);
+          svg.append(circle);
+        });
+      }
+      if (showBaseline.checked) addPoints("baseline", "var(--gold)", "Baseline predicted");
+      if (showEventForecast.checked) addPoints("eventAdjusted", "var(--rose)", "Event-adjusted predicted");
+      if (showActual.checked) addPoints("actual", "var(--green)", "Actual");
+    }
+    function selectedRankRows() {
+      const bucket = rankBucketSelect.value || rankPositionData.buckets[0];
+      const year = rankYearSelect.value || "all";
+      return rankPositionData.daily
+        .filter(row => row.bucket === bucket && (year === "all" || row.date.slice(0, 4) === year))
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+    function rankMetricLabel() {
+      return {
+        sales: "Sales",
+        salesItems: "Sales items",
+        pv: "PV"
+      }[rankMetricSelect.value] || "Sales";
+    }
+    function formatRankMetric(value) {
+      if (rankMetricSelect.value === "sales") return yen(value);
+      return money.format(value);
+    }
+    function drawRankPositionChart(svg) {
+      clear(svg);
+      const rows = selectedRankRows();
+      const metric = rankMetricSelect.value;
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 320;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 18, bottom: 48, left: 64 };
+      if (!rows.length) {
+        svg.append(svgText({ x: 20, y: 40, class: "tick" }, "No rank-position data for this selection."));
+        return;
+      }
+      const max = Math.max(...rows.map(row => row[metric]), 1);
+      const x = i => pad.left + (rows.length === 1 ? 0 : i * (w - pad.left - pad.right) / (rows.length - 1));
+      const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
+
+      [0, .25, .5, .75, 1].forEach(t => {
+        const yy = y(max * t);
+        svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: yy, y2: yy, class: "axis" }));
+        svg.append(svgText({ x: 8, y: yy + 4, class: "tick" }, rankMetricSelect.value === "sales" ? yen(max * t) : compact.format(max * t)));
+      });
+
+      const points = rows.map((row, i) => `${x(i)},${y(row[metric])}`).join(" ");
+      svg.append(svgEl("polyline", { points, fill: "none", stroke: "var(--blue)", "stroke-width": 2.5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
+
+      const stride = Math.max(1, Math.ceil(rows.length / 10));
+      rows.forEach((row, i) => {
+        if (i % stride === 0 || i === rows.length - 1) {
+          svg.append(svgText({ x: x(i), y: h - 16, class: "tick", "text-anchor": "middle" }, row.date.slice(0, 7)));
+        }
+      });
+
+      const pointStride = Math.max(1, Math.ceil(rows.length / 80));
+      rows.forEach((row, i) => {
+        if (i % pointStride !== 0 && i !== rows.length - 1) return;
+        const dot = svgEl("circle", { cx: x(i), cy: y(row[metric]), r: 3.2, fill: "var(--blue)" });
+        dot.addEventListener("mousemove", event => showTip(event, [
+          row.date,
+          `${row.bucket}`,
+          `${rankMetricLabel()}: ${formatRankMetric(row[metric])}`,
+          `Matched ranked items: ${money.format(row.rankedItems)}`
+        ]));
+        dot.addEventListener("mouseleave", hideTip);
+        svg.append(dot);
+      });
+    }
+    function renderRankPositionInterface() {
+      drawRankPositionChart(document.getElementById("rankPositionChart"));
+
+      const exactBody = document.getElementById("exactRankRows");
+      exactBody.innerHTML = "";
+      rankPositionData.exactRanks.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.rank}</td><td>${yen(row.sales)}</td><td>${money.format(row.salesItems)}</td><td>${money.format(row.pv)}</td>`;
+        exactBody.append(tr);
+      });
+
+      const metric = rankMetricSelect.value;
+      const dayBody = document.getElementById("rankDayRows");
+      dayBody.innerHTML = "";
+      selectedRankRows()
+        .slice()
+        .sort((a, b) => b[metric] - a[metric])
+        .slice(0, 8)
+        .forEach(row => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${row.date}</td><td>${formatRankMetric(row[metric])}</td><td>${money.format(row.rankedItems)}</td>`;
+          dayBody.append(tr);
+        });
+    }
+    function selectedQualityRows() {
+      const year = qualityYearSelect.value || "all";
+      return (rankPositionData.salesQuality || [])
+        .filter(row => year === "all" || row.month.slice(0, 4) === year)
+        .sort((a, b) => a.month.localeCompare(b.month));
+    }
+    function qualityMetricLabel(metric) {
+      return {
+        sales: "Sales",
+        pv: "PV",
+        cvr: "CVR",
+        avgOrderValue: "Avg order value"
+      }[metric] || "Sales";
+    }
+    function formatQualityMetric(metric, value) {
+      if (metric === "sales" || metric === "avgOrderValue") return yen(value);
+      if (metric === "cvr") return `${value.toFixed(2)}%`;
+      return money.format(value);
+    }
+    function drawQualityChart(svg) {
+      clear(svg);
+      const rows = selectedQualityRows();
+      const primary = qualityMetricSelect.value;
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 330;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 18, bottom: 48, left: 72 };
+      if (!rows.length) {
+        svg.append(svgText({ x: 20, y: 40, class: "tick" }, "No Sales/PV/CVR data for this selection."));
+        return;
+      }
+
+      const metrics = [
+        { key: primary, color: "var(--green)", width: 3.2 },
+        { key: "pv", color: "var(--blue)", width: 2.2 },
+        { key: "cvr", color: "var(--rose)", width: 2.2 }
+      ].filter((metric, index, list) => list.findIndex(item => item.key === metric.key) === index);
+      const maxByMetric = Object.fromEntries(metrics.map(metric => [metric.key, Math.max(...rows.map(row => row[metric.key]), 1)]));
+      const x = i => pad.left + (rows.length === 1 ? 0 : i * (w - pad.left - pad.right) / (rows.length - 1));
+      const y = (metric, value) => h - pad.bottom - (value / maxByMetric[metric]) * (h - pad.top - pad.bottom);
+
+      [0, .25, .5, .75, 1].forEach(t => {
+        const yy = h - pad.bottom - t * (h - pad.top - pad.bottom);
+        svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: yy, y2: yy, class: "axis" }));
+        svg.append(svgText({ x: 8, y: yy + 4, class: "tick" }, formatQualityMetric(primary, maxByMetric[primary] * t)));
+      });
+
+      metrics.forEach(metric => {
+        const points = rows.map((row, i) => `${x(i)},${y(metric.key, row[metric.key])}`).join(" ");
+        svg.append(svgEl("polyline", {
+          points,
+          fill: "none",
+          stroke: metric.color,
+          "stroke-width": metric.width,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+        }));
+      });
+
+      const stride = Math.max(1, Math.ceil(rows.length / 10));
+      rows.forEach((row, i) => {
+        if (i % stride === 0 || i === rows.length - 1) {
+          svg.append(svgText({ x: x(i), y: h - 16, class: "tick", "text-anchor": "middle" }, row.month.slice(0, 7)));
+        }
+      });
+
+      rows.forEach((row, i) => {
+        if (i % Math.max(1, Math.ceil(rows.length / 80)) !== 0 && i !== rows.length - 1) return;
+        const dot = svgEl("circle", { cx: x(i), cy: y(primary, row[primary]), r: 3.4, fill: "var(--green)" });
+        dot.addEventListener("mousemove", event => showTip(event, [
+          monthName(row.month),
+          `Sales: ${yen(row.sales)}`,
+          `PV: ${money.format(row.pv)}`,
+          `CVR: ${row.cvr.toFixed(2)}%`,
+          `Avg order value: ${yen(row.avgOrderValue)}`
+        ]));
+        dot.addEventListener("mouseleave", hideTip);
+        svg.append(dot);
+      });
+    }
+    function renderQualityInterface() {
+      drawQualityChart(document.getElementById("qualityChart"));
+      const rows = selectedQualityRows();
+      const totalSales = sum(rows, "sales");
+      const totalPv = sum(rows, "pv");
+      const totalItems = sum(rows, "salesItems");
+      const weightedCvr = totalPv ? totalItems * 100 / totalPv : 0;
+      document.getElementById("qualitySummary").innerHTML = [
+        [yen(totalSales), "selected sales"],
+        [money.format(totalPv), "selected PV"],
+        [`${weightedCvr.toFixed(2)}%`, "weighted CVR"]
+      ].map(([value, label]) => `<div class="event-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+      const body = document.getElementById("qualityRows");
+      body.innerHTML = "";
+      rows.slice().sort((a, b) => b.sales - a.sales).slice(0, 8).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${monthName(row.month)}</td><td>${yen(row.sales)}</td><td>${money.format(row.pv)}</td><td>${row.cvr.toFixed(2)}%</td>`;
+        body.append(tr);
+      });
+    }
+    function metricDisplay(metric, value) {
+      if (metric === "sales" || metric === "avgOrderValue") return yen(value);
+      if (metric === "cvr") return `${value.toFixed(2)}%`;
+      return money.format(value);
+    }
+    function comparisonMetricLabel(metric) {
+      return {
+        sales: "Sales",
+        pv: "PV",
+        cvr: "CVR",
+        salesItems: "Sales items",
+        avgOrderValue: "Avg order value"
+      }[metric] || "Sales";
+    }
+    function drawSeriesChart(svg, series, metric, colors) {
+      clear(svg);
+      const w = svg.clientWidth || 800, h = svg.clientHeight || 330;
+      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      const pad = { top: 18, right: 18, bottom: 48, left: 72 };
+      const allRows = series.flatMap(item => item.rows);
+      if (!allRows.length) {
+        svg.append(svgText({ x: 20, y: 40, class: "tick" }, "No data for this selection."));
+        return;
+      }
+      const months = [...new Set(allRows.map(row => row.month))].sort();
+      const max = Math.max(...allRows.map(row => row[metric]), 1);
+      const x = i => pad.left + (months.length === 1 ? 0 : i * (w - pad.left - pad.right) / (months.length - 1));
+      const y = v => h - pad.bottom - (v / max) * (h - pad.top - pad.bottom);
+
+      [0, .25, .5, .75, 1].forEach(t => {
+        const yy = y(max * t);
+        svg.append(svgEl("line", { x1: pad.left, x2: w - pad.right, y1: yy, y2: yy, class: "axis" }));
+        svg.append(svgText({ x: 8, y: yy + 4, class: "tick" }, metricDisplay(metric, max * t)));
+      });
+
+      series.forEach((item, seriesIndex) => {
+        const byMonth = Object.fromEntries(item.rows.map(row => [row.month, row]));
+        const points = months
+          .map((month, index) => byMonth[month] ? `${x(index)},${y(byMonth[month][metric])}` : null)
+          .filter(Boolean)
+          .join(" ");
+        svg.append(svgEl("polyline", {
+          points,
+          fill: "none",
+          stroke: colors[seriesIndex % colors.length],
+          "stroke-width": 2.8,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round"
+        }));
+        months.forEach((month, index) => {
+          const row = byMonth[month];
+          if (!row || (index % Math.max(1, Math.ceil(months.length / 70)) !== 0 && index !== months.length - 1)) return;
+          const dot = svgEl("circle", { cx: x(index), cy: y(row[metric]), r: 3.2, fill: colors[seriesIndex % colors.length] });
+          dot.addEventListener("mousemove", event => showTip(event, [
+            monthName(row.month),
+            item.label,
+            `${comparisonMetricLabel(metric)}: ${metricDisplay(metric, row[metric])}`,
+            `Sales: ${yen(row.sales)}`,
+            `PV: ${money.format(row.pv)}`,
+            `CVR: ${row.cvr.toFixed(2)}%`
+          ]));
+          dot.addEventListener("mouseleave", hideTip);
+          svg.append(dot);
+        });
+      });
+
+      const stride = Math.max(1, Math.ceil(months.length / 10));
+      months.forEach((month, index) => {
+        if (index % stride === 0 || index === months.length - 1) {
+          svg.append(svgText({ x: x(index), y: h - 16, class: "tick", "text-anchor": "middle" }, month.slice(0, 7)));
+        }
+      });
+    }
+    function rowsForYear(rows, year) {
+      return rows.filter(row => year === "all" || row.month.slice(0, 4) === year);
+    }
+    function renderPlatformComparison() {
+      const year = platformYearSelect.value || "all";
+      const platform = platformSelect.value || "all";
+      const metric = platformMetricSelect.value || "sales";
+      const allRows = rowsForYear(rankPositionData.platformMonthly || [], year);
+      const platforms = platform === "all" ? ["PC", "App", "Mobile"] : [platform];
+      const series = platforms.map(name => ({
+        label: name,
+        rows: allRows.filter(row => row.platform === name).sort((a, b) => a.month.localeCompare(b.month))
+      }));
+      drawSeriesChart(document.getElementById("platformChart"), series, metric, ["var(--green)", "var(--blue)", "var(--rose)"]);
+
+      const body = document.getElementById("platformRows");
+      body.innerHTML = "";
+      ["PC", "App", "Mobile"].forEach(name => {
+        const rows = allRows.filter(row => row.platform === name);
+        const sales = sum(rows, "sales");
+        const pv = sum(rows, "pv");
+        const items = sum(rows, "salesItems");
+        const cvr = pv ? items * 100 / pv : 0;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${name}</td><td>${yen(sales)}</td><td>${money.format(pv)}</td><td>${cvr.toFixed(2)}%</td>`;
+        body.append(tr);
+      });
+    }
+    function renderGenreComparison() {
+      const year = genreYearSelect.value || "all";
+      const genre = genreSelect.value || (rankPositionData.genreSummary?.[0]?.genre || "");
+      const metric = genreMetricSelect.value || "sales";
+      const rows = rowsForYear(rankPositionData.genreMonthly || [], year)
+        .filter(row => row.genre === genre)
+        .sort((a, b) => a.month.localeCompare(b.month));
+      drawSeriesChart(document.getElementById("genreChart"), [{ label: `Genre ${genre}`, rows }], metric, ["var(--gold)"]);
+
+      const body = document.getElementById("genreRows");
+      body.innerHTML = "";
+      (rankPositionData.genreSummary || []).slice(0, 12).forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.genre}</td><td>${yen(row.sales)}</td><td>${money.format(row.pv)}</td><td>${row.cvr.toFixed(2)}%</td>`;
+        body.append(tr);
+      });
+    }
+    function renderTable(rows, mixRows) {
+      const body = document.getElementById("detailRows");
+      body.innerHTML = "";
+      rows.forEach(row => {
+        const m = mixRows.find(item => item.month === row.month) || { newUser: 0, repeat: 0 };
+        const totalItems = m.newUser + m.repeat;
+        const monthEvents = eventsForMonth(row.month);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${monthName(row.month)}</td><td>${yen(row.total)}</td><td><div class="tag-list">${eventTags(monthEvents, 3)}</div></td><td>${money.format(m.newUser)}</td><td>${money.format(m.repeat)}</td><td>${totalItems ? pct(m.repeat / totalItems) : "0.0%"}</td>`;
+        body.append(tr);
+      });
+    }
+    function renderForecastTable() {
+      const body = document.getElementById("forecastRows");
+      body.innerHTML = "";
+      const futureRows = modelRows().filter(row => row.kind === "future");
+      futureRows.forEach(row => {
+        const tr = document.createElement("tr");
+        const events = row.events ? row.events.split(", ") : [];
+        tr.innerHTML = `<td>${monthName(row.month)}</td><td>${yen(row.baseline)}</td><td>${yen(row.eventAdjusted)}<br><span class="tick">${row.adjustment >= 0 ? "+" : ""}${row.adjustment}%</span></td><td><div class="tag-list">${events.map(name => `<span class="tag">${name}</span>`).join("")}</div></td>`;
+        body.append(tr);
+      });
+    }
+    function renderReportSections() {
+      document.getElementById("reportKpis").innerHTML = reportKpis.map(([label, value, delta]) => (
+        `<div class="report-kpi"><div class="label">${label}</div><div class="value">${value}</div><div class="delta">${delta}</div></div>`
+      )).join("");
+      document.getElementById("reportFindings").innerHTML = reportFindings.map(([title, body]) => (
+        `<div class="finding"><strong>${title}</strong><p>${body}</p></div>`
+      )).join("");
+
+      const annualBody = document.getElementById("reportAnnualRows");
+      annualBody.innerHTML = "";
+      reportAnnual.forEach((row, index) => {
+        const prev = reportAnnual[index - 1];
+        const yoy = prev ? ((row.sales - prev.sales) / prev.sales) * 100 : null;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.year}</td><td>${yen(row.sales)}</td><td>${yoy === null ? "-" : `${yoy >= 0 ? "+" : ""}${yoy.toFixed(1)}%`}</td><td><span class="tag">${row.type}</span></td>`;
+        annualBody.append(tr);
+      });
+
+      const eventBody = document.getElementById("reportEventRows");
+      eventBody.innerHTML = "";
+      [...reportEventImpact.slice(0, 6), ...reportEventImpact.slice(-4)].forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><span class="tag">${row.name}</span></td><td>${row.lift >= 0 ? "+" : ""}${row.lift.toFixed(1)}%</td>`;
+        eventBody.append(tr);
+      });
+
+      const itemBody = document.getElementById("reportItemRows");
+      itemBody.innerHTML = "";
+      const bestItems = (rankPositionData.topItems || reportTopItems).slice(0, 15);
+      bestItems.forEach(row => {
+        const tr = document.createElement("tr");
+        const units = row.salesItems ?? row.units;
+        const rating = row.avgRating ?? row.rating;
+        tr.innerHTML = `<td>${row.rank}</td><td>${row.item}</td><td>${row.genre}</td><td>${yen(row.sales)}</td><td>${money.format(units)}</td><td>${money.format(row.pv || 0)}</td><td>${rating ? rating.toFixed(2) : "-"}</td>`;
+        itemBody.append(tr);
+      });
+
+      const shopBody = document.getElementById("reportShopRows");
+      shopBody.innerHTML = "";
+      reportTopShops.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${row.rank}</td><td>${row.shop}</td><td>${yen(row.sales)}</td><td>${money.format(row.units)}</td><td>${money.format(row.items)}</td>`;
+        shopBody.append(tr);
+      });
+    }
+    function renderModelSummary() {
+      const box = document.getElementById("modelSummary");
+      if (!box) return;
+      const summary = trainedModelSummary || {
+        trainEnd: "walk-forward",
+        testMonths: selectedModelRows().filter(row => row.kind === "test").length,
+        meanAbsolutePercentError: null,
+        eventTypes: eventNames(campaignEvents).length,
+        eventWindows: campaignEvents.length
+      };
+      document.getElementById("forecastSubtitle").textContent = trainedModelSummary
+        ? `Model trained through ${monthName(summary.trainEnd)}, then tested against ${summary.testMonths} later actual months before forecasting forward.`
+        : "Predicted sales are backtested across earlier years, then extended into the future forecast. The actual line sits on top so you can compare model fit by month.";
+      box.innerHTML = [
+        [summary.meanAbsolutePercentError === null ? "n/a" : `${summary.meanAbsolutePercentError}%`, "test MAPE"],
+        [`${summary.testMonths}`, "test months"],
+        [`${summary.eventTypes}`, "event types"]
+      ].map(([value, label]) => `<div class="event-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+      const liftBody = document.getElementById("liftRows");
+      liftBody.innerHTML = "";
+      const lifts = Object.entries(summary.measuredEventLifts || {})
+        .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+        .slice(0, 10);
+      lifts.forEach(([name, value]) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><span class="tag">${name}</span></td><td>${value >= 0 ? "+" : ""}${value}%</td>`;
+        liftBody.append(tr);
+      });
+    }
+    function renderEvents(events, rows) {
+      const body = document.getElementById("eventRows");
+      const summary = document.getElementById("eventSummary");
+      const insights = document.getElementById("eventInsights");
+      const activeMonths = rows.filter(row => eventsForMonth(row.month).length);
+      const eventTypes = eventNames(events);
+      const zeroFiveCount = events.filter(event => event.name === "zero-five").length;
+
+      document.getElementById("eventSubtitle").textContent = `${events.length} tracked campaign windows in this view, including recurring zero-five days and named sale periods.`;
+      summary.innerHTML = [
+        [`${events.length}`, "event windows"],
+        [`${eventTypes.length}`, "event types"],
+        [`${activeMonths.length}`, "sales months with events"]
+      ].map(([value, label]) => `<div class="event-stat"><strong>${value}</strong><span>${label}</span></div>`).join("");
+
+      const displayEvents = [
+        ...events.filter(event => event.name !== "zero-five"),
+        ...events.filter(event => event.name === "zero-five")
+      ];
+      body.innerHTML = "";
+      displayEvents.slice(0, 18).forEach(event => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><span class="tag">${event.name}</span></td><td>${shortDate(event.startDate)}</td><td>${shortDate(event.endDate)}</td>`;
+        body.append(tr);
+      });
+      if (displayEvents.length > 18) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="3">${displayEvents.length - 18} more event windows in this view.</td>`;
+        body.append(tr);
+      }
+
+      insights.innerHTML = "";
+      [
+        ["Monthly context", activeMonths.length ? `${activeMonths.length} sales months overlap at least one tracked campaign window.` : "No campaign windows overlap the selected sales months."],
+        ["Recurring event load", `${zeroFiveCount} zero-five windows are included in the current event view.`],
+        ["Named campaigns", eventTypes.filter(name => name !== "zero-five").length ? eventTypes.filter(name => name !== "zero-five").join(", ") : "Only zero-five events are present in this view."]
+      ].forEach(([title, text]) => {
+        const div = document.createElement("div");
+        div.className = "insight";
+        div.innerHTML = `<strong>${title}</strong>${text}`;
+        insights.append(div);
+      });
+    }
+    function renderInsights(rows, mixRows) {
+      const total = sum(rows, "total");
+      const best = rows.reduce((a, b) => b.total > a.total ? b : a, rows[0]);
+      const first = rows[0]?.total || 0;
+      const last = rows.at(-1)?.total || 0;
+      const newItems = sum(mixRows, "newUser");
+      const repeatItems = sum(mixRows, "repeat");
+      const share = newItems + repeatItems ? repeatItems / (newItems + repeatItems) : 0;
+      const box = document.getElementById("insights");
+      box.innerHTML = "";
+      [
+        [`Peak month`, `${monthName(best.month)} is the strongest month in this view at ${yen(best.total)}.`],
+        [`Customer mix`, `Repeat customer item sales are ${pct(share)} of new plus repeat activity, so new users are still the main volume driver.`],
+        [`Trend signal`, `${last >= first ? "The period ends above where it starts" : "The period ends below where it starts"} (${first ? pct((last - first) / first) : "n/a"} from first to last month).`],
+        [`Next useful cut`, `The chats recommend top items, top shops, genre sales, and PV/CVR once those CSVs are exported.`]
+      ].forEach(([title, text]) => {
+        const div = document.createElement("div");
+        div.className = "insight";
+        div.innerHTML = `<strong>${title}</strong>${text}`;
+        box.append(div);
+      });
+      return { total, best, newItems, repeatItems, share };
+    }
+    function render() {
+      const rows = selectedRows();
+      const mixRows = selectedMix();
+      const eventRows = selectedEvents();
+      const isAll = allBtn.classList.contains("active");
+      const label = isAll ? "all available months" : yearSelect.value;
+      const stats = renderInsights(rows, mixRows);
+      document.getElementById("kpiSales").textContent = yenCompact(stats.total);
+      document.getElementById("kpiSalesNote").textContent = `${rows.length} monthly records in ${label}.`;
+      document.getElementById("kpiBest").textContent = monthName(stats.best.month);
+      document.getElementById("kpiBestNote").textContent = `${yen(stats.best.total)} in sales.`;
+      document.getElementById("kpiAvg").textContent = yenCompact(stats.total / rows.length);
+      document.getElementById("kpiRepeat").textContent = pct(stats.share);
+      document.getElementById("kpiRepeatNote").textContent = `${money.format(stats.repeatItems)} repeat items out of ${money.format(stats.newItems + stats.repeatItems)}.`;
+      document.getElementById("trendSubtitle").textContent = isAll ? "Full exported history from July 2019 through May 2026." : `Monthly sales for ${yearSelect.value}; this matches the year-filtered query pattern from the chat.`;
+      drawLine(document.getElementById("salesChart"), rows);
+      drawBars(document.getElementById("yearChart"), groupByYear(monthly, "total"), "var(--gold)");
+      drawMix(document.getElementById("mixChart"), mixRows);
+      drawForecast(document.getElementById("forecastChart"));
+      renderTable(rows, mixRows);
+      renderEvents(eventRows, rows);
+      renderForecastTable();
+      renderModelSummary();
+      renderReportSections();
+      renderRankPositionInterface();
+      renderQualityInterface();
+      renderPlatformComparison();
+      renderGenreComparison();
+    }
+    yearSelect.addEventListener("change", () => { allBtn.classList.remove("active"); render(); });
+    allBtn.addEventListener("click", () => { allBtn.classList.toggle("active"); render(); });
+    [showActual, showBaseline, showEventForecast].forEach(input => input.addEventListener("change", render));
+    [rankBucketSelect, rankYearSelect, rankMetricSelect].forEach(input => input.addEventListener("change", render));
+    [qualityMetricSelect, qualityYearSelect].forEach(input => input.addEventListener("change", render));
+    [platformSelect, platformMetricSelect, platformYearSelect, genreSelect, genreMetricSelect, genreYearSelect].forEach(input => input.addEventListener("change", render));
+    window.addEventListener("resize", render);
+    render();
+  </script>
+</body>
+</html>
