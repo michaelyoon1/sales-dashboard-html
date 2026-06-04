@@ -1256,7 +1256,7 @@
       update();
     }
 
-    function drawTrend(rows, startDate, endDate, metric, marketRows) {
+    function drawTrend(rows, metric, marketRows) {
       const svg = document.getElementById("trendChart");
       const width = svg.clientWidth || 900;
       const height = svg.clientHeight || 330;
@@ -1302,9 +1302,6 @@
         row
       })) : [];
 
-      const rangePoints = points.filter(point => (point.row.endDate || point.row.date) >= startDate && (point.row.startDate || point.row.date) <= endDate);
-      const rangeStart = rangePoints[0] || points[points.length - 1];
-      const rangeEnd = rangePoints[rangePoints.length - 1] || rangeStart;
       const gridLines = [0, 0.25, 0.5, 0.75, 1].map(step => {
         const y = pad.top + innerH - step * innerH;
         const value = max * step;
@@ -1326,13 +1323,12 @@
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.innerHTML = `
         <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"></rect>
-        <rect x="${rangeStart?.x || pad.left}" y="${pad.top}" width="${Math.max(2, (rangeEnd?.x || pad.left) - (rangeStart?.x || pad.left))}" height="${innerH}" fill="#fef3c7" opacity="0.78"></rect>
         ${gridLines}
         ${showMarketProjection ? `<polyline points="${marketPath}" fill="none" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="8 7" stroke-linecap="round" stroke-linejoin="round"></polyline>` : ""}
         <polyline points="${path}" fill="none" stroke="#15616d" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"></polyline>
         <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="#cfd6df"></line>
-        <circle cx="${rangeStart?.x || pad.left}" cy="${rangeStart?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
-        <circle cx="${rangeEnd?.x || pad.left}" cy="${rangeEnd?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
+        <circle cx="${points[0]?.x || pad.left}" cy="${points[0]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
+        <circle cx="${points[points.length - 1]?.x || pad.left}" cy="${points[points.length - 1]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
         ${marketLegend}
         <text x="${pad.left}" y="${height - 10}" class="axis-label">${minDate}</text>
         <text x="${width - pad.right}" y="${height - 10}" text-anchor="end" class="axis-label">${maxDate}</text>
@@ -1398,7 +1394,7 @@
       const max = Math.max(...data.genres.map(row => row.sales), 1);
       document.getElementById("genreList").innerHTML = data.genres.map(row => `
         <div class="row-pill">
-          <strong>${row.name || "Genre"}<br>${row.genre}</strong>
+          <strong>${row.name || `Unmapped genre ${row.genre}`}</strong>
           <div class="bar" aria-hidden="true"><i style="--w:${Math.max(4, row.sales / max * 100)}%;"></i></div>
           <em>${fmtYen.format(row.sales)}</em>
         </div>
@@ -1424,9 +1420,9 @@
 
       const rows = currentRows();
       const selectedRows = rangeRows(rows, selectedRange.start, selectedRange.end);
-      const trendRows = aggregateTrendRows(rows, granularitySelect.value);
+      const trendRows = aggregateTrendRows(selectedRows, granularitySelect.value);
       const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
-      const marketTrendRows = aggregateProjectionTrendRows(projectedByGenre.get(genre) || [], granularitySelect.value);
+      const marketTrendRows = aggregateProjectionTrendRows(projectedRows, granularitySelect.value);
       const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
@@ -1456,9 +1452,9 @@
         ? `${granularityLabel} Actual vs Model-Predicted Sales for ${genreLabel(genre)}`
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
-        ? `Green is actual TENKI sales; purple is a backtest prediction from historical sales, rank signals, and events. The shaded area marks ${selectedLabel || "the selected range"}.`
-        : `The shaded area marks ${selectedLabel || "the selected range"}.`;
-      document.getElementById("dateRange").textContent = rows.length ? `${rows[0].date} to ${rows[rows.length - 1].date}` : "-";
+        ? `Green is actual TENKI sales; purple is a backtest prediction from historical sales, rank signals, and events for ${selectedLabel || "the selected range"}.`
+        : `Showing ${selectedLabel || "the selected range"}.`;
+      document.getElementById("dateRange").textContent = selectedLabel || "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
 
       const comparisonMax = Math.max(projection.observedSales || 0, projection.projectedTotalSales || 0, 1);
@@ -1479,7 +1475,7 @@
       document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
       syncPresetButtons();
-      drawTrend(trendRows, selectedRange.start, selectedRange.end, metric, marketTrendRows);
+      drawTrend(trendRows, metric, marketTrendRows);
       renderEventImpact(genre, selectedRange.start, selectedRange.end, selectedLabel);
       renderTable(items);
       renderTopDays(rows);
