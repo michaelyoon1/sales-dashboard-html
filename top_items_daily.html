@@ -768,9 +768,9 @@
       <div id="marketBar" class="market-bar" aria-hidden="true"><span></span><span></span></div>
       <div class="legend">
         <span><i class="observed-dot"></i>Actual TENKI sales</span>
-        <span><i class="projected-dot"></i>Estimated ranked market</span>
+        <span><i class="projected-dot"></i>Projected competitor shops</span>
       </div>
-      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. Unmatched ranking rows are treated as competitors and estimated one row at a time before aggregation.</p>
+      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. The chart separates the top projected competitor shops instead of summing them into one line.</p>
     </section>
 
     <section class="panel event-panel" aria-label="Event impact">
@@ -870,7 +870,7 @@
   </main>
 
   <script src="top_items_daily_data.js?v=english-genres-20260604"></script>
-  <script src="projected_market_data.js?v=competitor-row-model-20260604"></script>
+  <script src="projected_market_data.js?v=separate-shop-lines-20260609"></script>
   <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
@@ -903,6 +903,7 @@
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
     const projectedByGenre = new Map();
+    const projectedShopByGenre = new Map();
     const eventRowsByGenre = new Map();
     const eventWindows = eventImpactData.windows
       .filter(row => row.startDate && row.endDate && row.startDate <= row.endDate)
@@ -924,6 +925,22 @@
       projectedByGenre.get(row.genre).push(row);
     }
 
+    for (const sourceRow of projectedMarketData.competitorShopDaily || []) {
+      const row = Array.isArray(sourceRow)
+        ? {
+            date: sourceRow[0],
+            genre: sourceRow[1],
+            shop: sourceRow[2],
+            shopSeriesRank: sourceRow[3],
+            predictedSales: sourceRow[4],
+            projectedRows: sourceRow[5],
+            avgRank: sourceRow[6]
+          }
+        : sourceRow;
+      if (!projectedShopByGenre.has(row.genre)) projectedShopByGenre.set(row.genre, []);
+      projectedShopByGenre.get(row.genre).push(row);
+    }
+
     for (const row of eventImpactData.events) {
       if (!eventRowsByGenre.has(row.genre)) eventRowsByGenre.set(row.genre, []);
       eventRowsByGenre.get(row.genre).push(row);
@@ -935,6 +952,10 @@
 
     for (const rows of projectedByGenre.values()) {
       rows.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    for (const rows of projectedShopByGenre.values()) {
+      rows.sort((a, b) => (a.shopSeriesRank - b.shopSeriesRank) || a.date.localeCompare(b.date));
     }
 
     for (const rows of eventRowsByGenre.values()) {
@@ -1100,6 +1121,10 @@
       return rangeRows(projectedByGenre.get(genre) || [], start, end);
     }
 
+    function projectionShopRows(genre, start, end) {
+      return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
+    }
+
     function sumProjection(rows) {
       return rows.reduce((total, row) => ({
         observedSales: total.observedSales + (row.observedSales || 0),
@@ -1245,6 +1270,36 @@
       return [...buckets.values()];
     }
 
+    function aggregateShopTrendRows(rows, granularity) {
+      if (granularity === "day") return rows;
+      const buckets = new Map();
+      for (const row of rows) {
+        const period = granularity === "week" ? weekKey(row.date) : monthKey(row.date);
+        const key = `${row.shop}|${period}`;
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            date: period,
+            shop: row.shop,
+            shopSeriesRank: row.shopSeriesRank,
+            predictedSales: 0,
+            projectedRows: 0,
+            avgRankTotal: 0,
+            avgRankCount: 0,
+            startDate: row.date,
+            endDate: row.date
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.predictedSales += row.predictedSales || 0;
+        bucket.projectedRows += row.projectedRows || 0;
+        bucket.avgRankTotal += row.avgRank || 0;
+        bucket.avgRankCount += 1;
+        bucket.avgRank = bucket.avgRankCount ? bucket.avgRankTotal / bucket.avgRankCount : 0;
+        bucket.endDate = row.date;
+      }
+      return [...buckets.values()].sort((a, b) => (a.shopSeriesRank - b.shopSeriesRank) || a.date.localeCompare(b.date));
+    }
+
     function moveDate(offset) {
       const dates = availableDates();
       const range = normalizedRange();
@@ -1256,16 +1311,18 @@
       update();
     }
 
-    function drawTrend(rows, metric, marketRows) {
+    function drawTrend(rows, metric, marketRows, shopRows) {
       const svg = document.getElementById("trendChart");
       const width = svg.clientWidth || 900;
       const height = svg.clientHeight || 330;
       const pad = { top: 16, right: 18, bottom: 34, left: 74 };
       const innerW = Math.max(1, width - pad.left - pad.right);
       const innerH = Math.max(1, height - pad.top - pad.bottom);
-      const showMarketProjection = metric === "sales" && marketRows && marketRows.length;
+      const showShopProjection = metric === "sales" && shopRows && shopRows.length;
+      const showMarketProjection = metric === "sales" && !showShopProjection && marketRows && marketRows.length;
       const marketMax = showMarketProjection ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
-      const max = Math.max(...rows.map(row => row[metric] || 0), marketMax, 1);
+      const shopMax = showShopProjection ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
+      const max = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
       const minDate = rows[0]?.startDate || rows[0]?.date || "";
       const maxDate = rows[rows.length - 1]?.endDate || rows[rows.length - 1]?.date || "";
 
@@ -1301,6 +1358,25 @@
         y: yForValue(row.projectedTotalSales),
         row
       })) : [];
+      const shopColors = ["#8b6ee8", "#b15dd6", "#6d7fe8", "#9b5bb8", "#5d95d6"];
+      const shopSeries = showShopProjection
+        ? [...shopRows.reduce((map, row) => {
+            if (!map.has(row.shop)) map.set(row.shop, []);
+            map.get(row.shop).push(row);
+            return map;
+          }, new Map()).entries()]
+          .sort((a, b) => (a[1][0]?.shopSeriesRank || 0) - (b[1][0]?.shopSeriesRank || 0))
+          .map(([shop, seriesRows], index) => ({
+            shop,
+            color: shopColors[index % shopColors.length],
+            rows: seriesRows.sort((a, b) => a.date.localeCompare(b.date)),
+            points: seriesRows.sort((a, b) => a.date.localeCompare(b.date)).map(row => ({
+              x: xForRowDate(row),
+              y: yForValue(row.predictedSales),
+              row
+            }))
+          }))
+        : [];
 
       const gridLines = [0, 0.25, 0.5, 0.75, 1].map(step => {
         const y = pad.top + innerH - step * innerH;
@@ -1318,13 +1394,23 @@
         <text x="${Math.max(pad.left, width - 298)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 190)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 156)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
         <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">Ranked market</text>
+      ` : showShopProjection ? `
+        <line x1="${Math.max(pad.left, width - 370)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 336)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
+        <text x="${Math.max(pad.left, width - 328)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
+        <line x1="${Math.max(pad.left, width - 202)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 168)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
+        <text x="${Math.max(pad.left, width - 160)}" y="${pad.top + 13}" class="axis-label">Projected shops</text>
       ` : "";
+      const shopPaths = shopSeries.map(series => {
+        const pointsAttr = series.points.map(point => `${point.x},${point.y}`).join(" ");
+        return `<polyline points="${pointsAttr}" fill="none" stroke="${series.color}" stroke-width="2.2" stroke-dasharray="7 6" stroke-linecap="round" stroke-linejoin="round"></polyline>`;
+      }).join("");
 
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.innerHTML = `
         <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"></rect>
         ${gridLines}
         ${showMarketProjection ? `<polyline points="${marketPath}" fill="none" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="8 7" stroke-linecap="round" stroke-linejoin="round"></polyline>` : ""}
+        ${shopPaths}
         <polyline points="${path}" fill="none" stroke="#15616d" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"></polyline>
         <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="#cfd6df"></line>
         <circle cx="${points[0]?.x || pad.left}" cy="${points[0]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
@@ -1423,6 +1509,7 @@
       const trendRows = aggregateTrendRows(selectedRows, granularitySelect.value);
       const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
       const marketTrendRows = aggregateProjectionTrendRows(projectedRows, granularitySelect.value);
+      const shopTrendRows = aggregateShopTrendRows(projectionShopRows(genre, selectedRange.start, selectedRange.end), granularitySelect.value);
       const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
@@ -1449,10 +1536,10 @@
 
       const granularityLabel = metricLabel(granularitySelect.value).replace("day", "Daily").replace("week", "Weekly").replace("month", "Monthly");
       document.getElementById("chartTitle").textContent = metric === "sales"
-        ? `${granularityLabel} TENKI vs Estimated Ranked Market for ${genreLabel(genre)}`
+        ? `${granularityLabel} TENKI vs Projected Competitor Shops for ${genreLabel(genre)}`
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
-        ? `Green is observed TENKI sales. Purple estimates matched TENKI sales plus missing ranked competitor sales for ${selectedLabel || "the selected range"}.`
+        ? `Green is observed TENKI sales. Purple lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately, not summed together.`
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
@@ -1475,7 +1562,7 @@
       document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
       syncPresetButtons();
-      drawTrend(trendRows, metric, marketTrendRows);
+      drawTrend(trendRows, metric, marketTrendRows, shopTrendRows);
       renderEventImpact(genre, selectedRange.start, selectedRange.end, selectedLabel);
       renderTable(items);
       renderTopDays(rows);
