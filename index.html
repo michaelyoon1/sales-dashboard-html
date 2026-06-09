@@ -1323,6 +1323,14 @@
       const marketMax = showMarketProjection ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
       const shopMax = showShopProjection ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
       const max = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
+      const chartValues = [
+        ...rows.map(row => row[metric] || 0),
+        ...(showMarketProjection ? marketRows.map(row => row.projectedTotalSales || 0) : []),
+        ...(showShopProjection ? shopRows.map(row => row.predictedSales || 0) : [])
+      ].filter(value => value > 0).sort((a, b) => a - b);
+      const medianValue = chartValues.length ? chartValues[Math.floor(chartValues.length / 2)] : 0;
+      const useLogScale = metric === "sales" && medianValue > 0 && max / medianValue > 8;
+      svg.dataset.scale = useLogScale ? "log" : "linear";
       const minDate = rows[0]?.startDate || rows[0]?.date || "";
       const maxDate = rows[rows.length - 1]?.endDate || rows[rows.length - 1]?.date || "";
 
@@ -1331,12 +1339,15 @@
       }
 
       function yForValue(value) {
+        if (useLogScale) {
+          return pad.top + innerH - (Math.log10((value || 0) + 1) / Math.log10(max + 1)) * innerH;
+        }
         return pad.top + innerH - ((value || 0) / max) * innerH;
       }
 
       const points = rows.map((row, index) => {
         const x = xForIndex(index, rows.length);
-        const y = pad.top + innerH - ((row[metric] || 0) / max) * innerH;
+        const y = yForValue(row[metric] || 0);
         return { x, y, row };
       });
 
@@ -1378,9 +1389,21 @@
           }))
         : [];
 
-      const gridLines = [0, 0.25, 0.5, 0.75, 1].map(step => {
-        const y = pad.top + innerH - step * innerH;
-        const value = max * step;
+      const gridValues = useLogScale
+        ? (() => {
+            const topPower = Math.ceil(Math.log10(max));
+            const startPower = Math.max(3, topPower - 3);
+            const values = [0];
+            for (let power = startPower; power <= topPower; power += 1) {
+              const value = Math.pow(10, power);
+              if (value < max) values.push(value);
+            }
+            values.push(max);
+            return [...new Set(values.map(value => Math.round(value)))];
+          })()
+        : [0, 0.25, 0.5, 0.75, 1].map(step => max * step);
+      const gridLines = gridValues.map(value => {
+        const y = yForValue(value);
         return `
           <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#e6eaf0" />
           <text x="${pad.left - 10}" y="${y + 4}" text-anchor="end" class="axis-label">${formatMetric(value, metric)}</text>
@@ -1416,6 +1439,7 @@
         <circle cx="${points[0]?.x || pad.left}" cy="${points[0]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
         <circle cx="${points[points.length - 1]?.x || pad.left}" cy="${points[points.length - 1]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
         ${marketLegend}
+        ${useLogScale ? `<text x="${pad.left}" y="${pad.top + 13}" class="axis-label">Log scale</text>` : ""}
         <text x="${pad.left}" y="${height - 10}" class="axis-label">${minDate}</text>
         <text x="${width - pad.right}" y="${height - 10}" text-anchor="end" class="axis-label">${maxDate}</text>
       `;
@@ -1563,6 +1587,9 @@
 
       syncPresetButtons();
       drawTrend(trendRows, metric, marketTrendRows, shopTrendRows);
+      if (metric === "sales" && document.getElementById("trendChart").dataset.scale === "log") {
+        document.getElementById("chartNote").textContent += " Log scale is used because the selected series have large spikes.";
+      }
       renderEventImpact(genre, selectedRange.start, selectedRange.end, selectedLabel);
       renderTable(items);
       renderTopDays(rows);
