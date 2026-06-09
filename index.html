@@ -778,12 +778,29 @@
           <small id="observedCoverageSub">Matched vs predicted ranking rows</small>
         </article>
       </div>
+      <div class="projection-grid" aria-label="Model validation metrics">
+        <article class="projection-card">
+          <span>Holdout WMAPE</span>
+          <strong id="modelWmape">-</strong>
+          <small id="modelWmapeSub">Hidden known ranked rows</small>
+        </article>
+        <article class="projection-card">
+          <span>Median APE</span>
+          <strong id="modelMedianApe">-</strong>
+          <small id="modelMedianApeSub">Median row-level percentage error</small>
+        </article>
+        <article class="projection-card">
+          <span>Within 25%</span>
+          <strong id="modelWithin25">-</strong>
+          <small id="modelWithin25Sub">Predictions within 25% error</small>
+        </article>
+      </div>
       <div id="marketBar" class="market-bar" aria-hidden="true"><span></span><span></span></div>
       <div class="legend">
         <span><i class="observed-dot"></i>Actual TENKI sales</span>
         <span><i class="projected-dot"></i>Projected competitor shops</span>
       </div>
-      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. Recent category sales anchor the estimates when ranking overlap is sparse, and the chart separates the top projected competitor shops instead of summing them into one line.</p>
+      <p class="note">Model method: matched TENKI ranking rows train a log-sales model using genre, rank, rank bucket, price band, weekday, month, event context, price, and recent genre-sales level. Validation hides 5% of known ranked values, and the chart separates the top projected competitor shops instead of summing them into one line.</p>
     </section>
 
     <section class="panel event-panel" aria-label="Event impact">
@@ -883,7 +900,7 @@
   </main>
 
   <script src="top_items_daily_data.js?v=english-genres-20260604"></script>
-  <script src="projected_market_data.js?v=trained-model-projections-20260609"></script>
+  <script src="projected_market_data.js?v=hidden-holdout-metrics-20260609"></script>
   <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
@@ -1751,6 +1768,14 @@
       document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x matched TENKI ranked sales` : "TENKI matches plus competitor estimates";
       document.getElementById("observedCoverage").textContent = `${fmtPct.format(coveragePct)}%`;
       document.getElementById("observedCoverageSub").textContent = `${fmtNum.format(projection.observedRows || 0)} matched / ${fmtNum.format(projection.projectedRows || 0)} estimated`;
+      const validation = projectedMarketData.method?.validation || {};
+      const hiddenRows = validation.rows ? `${fmtNum.format(validation.rows)} hidden rows` : "Hidden known ranked rows";
+      document.getElementById("modelWmape").textContent = Number.isFinite(validation.wmape) ? `${fmtPct.format(validation.wmape * 100)}%` : "-";
+      document.getElementById("modelWmapeSub").textContent = hiddenRows;
+      document.getElementById("modelMedianApe").textContent = Number.isFinite(validation.medianAbsPctError) ? `${fmtPct.format(validation.medianAbsPctError * 100)}%` : "-";
+      document.getElementById("modelMedianApeSub").textContent = validation.strategy ? "5% hidden known ranked values" : "Median row-level percentage error";
+      document.getElementById("modelWithin25").textContent = Number.isFinite(validation.within25Pct) ? `${fmtPct.format(validation.within25Pct * 100)}%` : "-";
+      document.getElementById("modelWithin25Sub").textContent = "Predictions within 25% error";
       document.getElementById("marketBar").style.setProperty("--observed", `${observedShare}fr`);
       document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
