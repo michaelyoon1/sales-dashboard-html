@@ -770,7 +770,7 @@
         <span><i class="observed-dot"></i>Actual TENKI sales</span>
         <span><i class="projected-dot"></i>Projected competitor shops</span>
       </div>
-      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. The chart separates the top projected competitor shops instead of summing them into one line.</p>
+      <p class="note">Model method: matched TENKI ranking rows train expected sales by genre, exact rank, rank bucket, price band, weekday, month, and event context. Recent category sales anchor the estimates when ranking overlap is sparse, and the chart separates the top projected competitor shops instead of summing them into one line.</p>
     </section>
 
     <section class="panel event-panel" aria-label="Event impact">
@@ -870,7 +870,7 @@
   </main>
 
   <script src="top_items_daily_data.js?v=english-genres-20260604"></script>
-  <script src="projected_market_data.js?v=separate-shop-lines-20260609"></script>
+  <script src="projected_market_data.js?v=anchored-shop-lines-20260609"></script>
   <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
