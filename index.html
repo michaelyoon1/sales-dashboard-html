@@ -1295,6 +1295,11 @@
       return date.slice(0, 7);
     }
 
+    function daysInMonth(month) {
+      const [year, monthNum] = month.split("-").map(Number);
+      return new Date(year, monthNum, 0).getDate();
+    }
+
     function aggregateTrendRows(rows, granularity) {
       if (granularity === "day") return rows;
       const buckets = new Map();
@@ -1307,6 +1312,8 @@
             salesItems: 0,
             pv: 0,
             itemCount: 0,
+            coverageDays: 0,
+            expectedDays: granularity === "week" ? 7 : daysInMonth(key),
             startDate: row.date,
             endDate: row.date
           });
@@ -1316,6 +1323,7 @@
         bucket.salesItems += row.salesItems || 0;
         bucket.pv += row.pv || 0;
         bucket.itemCount += row.itemCount || 0;
+        bucket.coverageDays += 1;
         bucket.endDate = row.date;
       }
       return [...buckets.values()];
@@ -1499,6 +1507,18 @@
       const areaPath = options.area && points.length
         ? `${points[0].x},${baselineY} ${path} ${points[points.length - 1].x},${baselineY}`
         : "";
+      const lowCoverageBands = options.showCoverage && points.length
+        ? points
+            .filter(point => point.row.expectedDays && (point.row.coverageDays || 0) / point.row.expectedDays < 0.5)
+            .map((point, index) => {
+              const previousX = points[index - 1]?.x ?? point.x - innerW / Math.max(points.length - 1, 1);
+              const nextX = points[index + 1]?.x ?? point.x + innerW / Math.max(points.length - 1, 1);
+              const x = Math.max(pad.left, (previousX + point.x) / 2);
+              const width = Math.max(3, Math.min(width - pad.right, (point.x + nextX) / 2) - x);
+              return `<rect x="${x}" y="${pad.top}" width="${width}" height="${innerH}" fill="#f8e7d0" opacity="0.42"></rect>`;
+            })
+            .join("")
+        : "";
       const marketPath = marketPoints.map(point => `${point.x},${point.y}`).join(" ");
       const marketLegend = showMarketProjection ? `
         <line x1="${Math.max(pad.left, width - 340)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 306)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
@@ -1522,6 +1542,7 @@
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.innerHTML = `
         <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"></rect>
+        ${lowCoverageBands}
         ${gridLines}
         ${areaPath ? `<polygon points="${areaPath}" fill="#dff1ee"></polygon>` : ""}
         ${showMarketProjection ? `<polyline points="${marketPath}" fill="none" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="8 7" stroke-linecap="round" stroke-linejoin="round"></polyline>` : ""}
@@ -1697,11 +1718,18 @@
           area: metric === "sales",
           markers: metric === "sales" && trendRows.length <= 260,
           forceLinear: isAllGenres && metric === "sales",
-          compactDates: isAllGenres && granularitySelect.value === "month"
+          compactDates: isAllGenres && granularitySelect.value === "month",
+          showCoverage: metric === "sales" && granularitySelect.value !== "day"
         }
       );
       if (metric === "sales" && document.getElementById("trendChart").dataset.scale === "log") {
         document.getElementById("chartNote").textContent += " Log scale is used because the selected series have large spikes.";
+      }
+      const lowCoverageCount = metric === "sales" && granularitySelect.value !== "day"
+        ? trendRows.filter(row => row.expectedDays && (row.coverageDays || 0) / row.expectedDays < 0.5).length
+        : 0;
+      if (lowCoverageCount) {
+        document.getElementById("chartNote").textContent += ` Shaded periods have sparse source coverage.`;
       }
       renderEventImpact(genre, selectedRange.start, selectedRange.end, selectedLabel);
       renderTable(items);
