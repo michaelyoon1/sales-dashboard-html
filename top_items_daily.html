@@ -202,6 +202,19 @@
       border-radius: 999px;
     }
 
+    button:disabled {
+      cursor: not-allowed;
+      color: #a0a9b8;
+      background: #f4f6f9;
+      border-color: var(--line);
+      opacity: 0.7;
+    }
+
+    button:disabled:hover {
+      border-color: var(--line);
+      background: #f4f6f9;
+    }
+
     button:hover {
       border-color: var(--accent);
       background: var(--soft);
@@ -1394,10 +1407,27 @@
       const range = normalizedRange();
       if (!dates.length || range.startIndex < 0 || range.endIndex < 0) return;
       const width = range.endIndex - range.startIndex;
-      const nextStart = Math.max(0, Math.min(dates.length - 1 - width, range.startIndex + offset));
+      const jump = Math.max(1, width + 1);
+      const nextStart = Math.max(0, Math.min(dates.length - 1 - width, range.startIndex + offset * jump));
+      if (nextStart === range.startIndex) return;
       startDateInput.value = dates[nextStart] || range.start;
       endDateInput.value = dates[nextStart + width] || range.end;
+      rangePresetSelect.value = "custom";
       update();
+    }
+
+    function syncRangeShiftButtons() {
+      const dates = availableDates();
+      const range = normalizedRange();
+      const width = range.endIndex - range.startIndex;
+      const canMoveBack = dates.length && range.startIndex > 0;
+      const canMoveForward = dates.length && range.endIndex < dates.length - 1 && width < dates.length - 1;
+      prevDay.disabled = !canMoveBack;
+      nextDay.disabled = !canMoveForward;
+      prevDay.title = canMoveBack ? "Previous range" : "At earliest range";
+      nextDay.title = canMoveForward ? "Next range" : "At latest range";
+      prevDay.setAttribute("aria-label", prevDay.title);
+      nextDay.setAttribute("aria-label", nextDay.title);
     }
 
     function drawTrend(rows, metric, marketRows, shopRows, options = {}) {
@@ -1725,6 +1755,7 @@
       document.getElementById("marketBar").style.setProperty("--projected", `${projectedShare}fr`);
 
       syncPresetButtons();
+      syncRangeShiftButtons();
       drawTrend(
         trendRows,
         metric,
