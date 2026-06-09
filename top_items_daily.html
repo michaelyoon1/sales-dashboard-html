@@ -876,6 +876,7 @@
     const data = window.TOP_ITEMS_DAILY_DATA || { genres: [], topItems: [], dailyTotals: [] };
     const projectedMarketData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
     const eventImpactData = window.EVENT_IMPACT_DATA || { events: [], windows: [], method: "" };
+    const ALL_GENRES = "__all__";
 
     const fmtYen = new Intl.NumberFormat("ja-JP", {
       style: "currency",
@@ -904,6 +905,7 @@
     const itemsByGenreDate = new Map();
     const projectedByGenre = new Map();
     const projectedShopByGenre = new Map();
+    const allProjectedShopRows = [];
     const eventRowsByGenre = new Map();
     const eventWindows = eventImpactData.windows
       .filter(row => row.startDate && row.endDate && row.startDate <= row.endDate)
@@ -939,6 +941,7 @@
         : sourceRow;
       if (!projectedShopByGenre.has(row.genre)) projectedShopByGenre.set(row.genre, []);
       projectedShopByGenre.get(row.genre).push(row);
+      allProjectedShopRows.push(row);
     }
 
     for (const row of eventImpactData.events) {
@@ -966,6 +969,31 @@
       rows.sort((a, b) => a.dayRank - b.dayRank);
     }
 
+    function aggregateRowsByDate(rows, fields) {
+      const buckets = new Map();
+      for (const row of rows) {
+        if (!buckets.has(row.date)) {
+          const bucket = { date: row.date };
+          for (const field of fields) bucket[field] = 0;
+          buckets.set(row.date, bucket);
+        }
+        const bucket = buckets.get(row.date);
+        for (const field of fields) bucket[field] += row[field] || 0;
+      }
+      return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    totalsByGenre.set(ALL_GENRES, aggregateRowsByDate(data.dailyTotals, ["sales", "salesItems", "pv", "itemCount"]));
+    projectedByGenre.set(ALL_GENRES, aggregateRowsByDate(projectedMarketData.daily, [
+      "observedSales",
+      "projectedMissingSales",
+      "projectedTotalSales",
+      "rankedRows",
+      "observedRows",
+      "projectedRows",
+      "eventTypeCount"
+    ]));
+
     function metricLabel(metric) {
       return {
         sales: "Sales",
@@ -975,6 +1003,7 @@
     }
 
     function genreName(genreId) {
+      if (genreId === ALL_GENRES) return "All Genres";
       return data.genres.find(row => row.genre === genreId)?.name || `Genre ${genreId}`;
     }
 
@@ -997,11 +1026,13 @@
     }
 
     function setGenreOptions() {
-      genreSelect.innerHTML = data.genres.map((genre, index) => {
+      const totalSales = data.genres.reduce((sum, genre) => sum + (genre.sales || 0), 0);
+      const genreOptions = data.genres.map((genre, index) => {
         const name = genre.name || `Unmapped genre ${genre.genre}`;
         const label = `${name} - ${fmtYen.format(genre.sales)}`;
         return `<option value="${genre.genre}">${index + 1}. ${label}</option>`;
       }).join("");
+      genreSelect.innerHTML = `<option value="${ALL_GENRES}">All Genres - ${fmtYen.format(totalSales)}</option>${genreOptions}`;
     }
 
     function currentRows() {
@@ -1122,7 +1153,17 @@
     }
 
     function projectionShopRows(genre, start, end) {
-      return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
+      if (genre !== ALL_GENRES) return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
+      const rows = rangeRows(allProjectedShopRows, start, end);
+      const totals = new Map();
+      for (const row of rows) {
+        totals.set(row.shop, (totals.get(row.shop) || 0) + (row.predictedSales || 0));
+      }
+      const topShopList = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, projectedMarketData.method?.shopSeriesPerGenre || 5).map(([shop]) => shop);
+      const topShops = new Set(topShopList);
+      return rows
+        .filter(row => topShops.has(row.shop))
+        .map(row => ({ ...row, shopSeriesRank: topShopList.indexOf(row.shop) + 1 }));
     }
 
     function sumProjection(rows) {
@@ -1166,27 +1207,42 @@
     function renderEventImpact(genre, start, end, selectedLabel) {
       const activeWindows = windowsForRange(start, end);
       const activeNames = new Set(activeWindows.map(row => row.name));
-      const rows = (eventRowsByGenre.get(genre) || [])
+      const sourceRows = genre === ALL_GENRES ? eventImpactData.events : (eventRowsByGenre.get(genre) || []);
+      const rows = sourceRows
         .filter(row => activeNames.has(row.name))
+        .reduce((map, row) => {
+          if (!map.has(row.name)) {
+            map.set(row.name, { name: row.name, eventDays: 0, observedSales: 0, weightedLift: 0 });
+          }
+          const item = map.get(row.name);
+          item.eventDays += row.eventDays || 0;
+          item.observedSales += row.observedSales || 0;
+          item.weightedLift += (row.observedLift || 0) * Math.max(row.observedSales || 0, 1);
+          return map;
+        }, new Map());
+      const mergedRows = [...rows.values()].map(row => ({
+        ...row,
+        observedLift: row.observedSales ? row.weightedLift / row.observedSales : 0
+      }))
         .sort((a, b) => (b.observedLift || 0) - (a.observedLift || 0));
-      const strongest = rows[0];
-      const historicalSales = rows.reduce((total, row) => total + (row.observedSales || 0), 0);
+      const strongest = mergedRows[0];
+      const historicalSales = mergedRows.reduce((total, row) => total + (row.observedSales || 0), 0);
 
       document.getElementById("eventRange").textContent = selectedLabel || "Events";
       document.getElementById("eventWindowCount").textContent = fmtNum.format(activeWindows.length);
       document.getElementById("eventWindowSub").textContent = `${fmtNum.format(activeNames.size)} event type(s) active in range`;
       document.getElementById("strongestEventLift").textContent = strongest ? `${strongest.observedLift >= 0 ? "+" : ""}${fmtPct.format(strongest.observedLift)}%` : "-";
       document.getElementById("strongestEventSub").textContent = strongest ? prettyEventName(strongest.name) : "No matching event signal";
-      document.getElementById("eventSalesTotal").textContent = rows.length ? fmtYen.format(historicalSales) : "-";
-      document.getElementById("eventSalesSub").textContent = rows.length ? "Historical sales on matching event types" : "No event-sales overlap for selected genre";
+      document.getElementById("eventSalesTotal").textContent = mergedRows.length ? fmtYen.format(historicalSales) : "-";
+      document.getElementById("eventSalesSub").textContent = mergedRows.length ? "Historical sales on matching event types" : "No event-sales overlap for selected genre";
 
       const eventList = document.getElementById("eventList");
-      if (!rows.length) {
+      if (!mergedRows.length) {
         eventList.innerHTML = `<div class="event-row"><strong>No matching events</strong><span>Try a wider date range or another genre.</span></div>`;
         return;
       }
 
-      eventList.innerHTML = rows.slice(0, 8).map(row => {
+      eventList.innerHTML = mergedRows.slice(0, 8).map(row => {
         const lift = row.observedLift || 0;
         return `
           <div class="event-row ${lift < 0 ? "negative" : ""}">
@@ -1450,18 +1506,22 @@
       const byItem = new Map();
 
       for (const date of dates) {
-        const rows = itemsByGenreDate.get(`${genre}|${date}`) || [];
+        const rows = genre === ALL_GENRES
+          ? data.genres.flatMap(genreRow => itemsByGenreDate.get(`${genreRow.genre}|${date}`) || [])
+          : (itemsByGenreDate.get(`${genre}|${date}`) || []);
         for (const row of rows) {
-          if (!byItem.has(row.item)) {
-            byItem.set(row.item, {
+          const key = genre === ALL_GENRES ? `${row.genre}|${row.item}` : row.item;
+          if (!byItem.has(key)) {
+            byItem.set(key, {
               item: row.item,
+              genre: row.genre,
               sales: 0,
               salesItems: 0,
               pv: 0,
               activeDays: 0
             });
           }
-          const item = byItem.get(row.item);
+          const item = byItem.get(key);
           item.sales += row.sales || 0;
           item.salesItems += row.salesItems || 0;
           item.pv += row.pv || 0;
@@ -1485,7 +1545,7 @@
       body.innerHTML = items.map(row => `
         <tr>
           <td class="rank">#${row.dayRank}</td>
-          <td><span class="item-id">${row.item}</span></td>
+          <td><span class="item-id">${row.item}</span>${row.genre ? `<br><small>${genreLabel(row.genre)}</small>` : ""}</td>
           <td class="money">${fmtYen.format(row.sales)}</td>
           <td class="num">${fmtNum.format(row.salesItems)}</td>
           <td class="num">${fmtNum.format(row.pv)}</td>
