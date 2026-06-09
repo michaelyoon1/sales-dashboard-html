@@ -1412,17 +1412,21 @@
       const showShopProjection = metric === "sales" && shopRows && shopRows.length;
       const showMarketProjection = metric === "sales" && !showShopProjection && marketRows && marketRows.length;
       const useSecondaryMarketScale = Boolean(options.secondaryMarketScale && showMarketProjection);
+      const useSecondaryShopScale = Boolean(options.secondaryShopScale && showShopProjection);
       const marketMax = showMarketProjection && !useSecondaryMarketScale ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
       const secondaryMarketMax = useSecondaryMarketScale
         ? Math.max(...marketRows.map(row => row.projectedMissingSales || 0), 1)
         : 0;
-      const shopMax = showShopProjection ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
+      const shopMax = showShopProjection && !useSecondaryShopScale ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
+      const secondaryShopMax = useSecondaryShopScale
+        ? Math.max(...shopRows.map(row => row.predictedSales || 0), 1)
+        : 0;
       const rawMax = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
       const max = rawMax * 1.18;
       const chartValues = [
         ...rows.map(row => row[metric] || 0),
         ...(showMarketProjection && !useSecondaryMarketScale ? marketRows.map(row => row.projectedTotalSales || 0) : []),
-        ...(showShopProjection ? shopRows.map(row => row.predictedSales || 0) : [])
+        ...(showShopProjection && !useSecondaryShopScale ? shopRows.map(row => row.predictedSales || 0) : [])
       ].filter(value => value > 0).sort((a, b) => a - b);
       const medianValue = chartValues.length ? chartValues[Math.floor(chartValues.length / 2)] : 0;
       const useLogScale = !options.forceLinear && metric === "sales" && medianValue > 0 && max / medianValue > 8;
@@ -1443,6 +1447,10 @@
 
       function yForSecondaryMarketValue(value) {
         return pad.top + topGap + plotH - ((value || 0) / (secondaryMarketMax * 1.18)) * plotH;
+      }
+
+      function yForSecondaryShopValue(value) {
+        return pad.top + topGap + plotH - ((value || 0) / (secondaryShopMax * 1.18)) * plotH;
       }
 
       const points = rows.map((row, index) => {
@@ -1483,7 +1491,7 @@
             rows: seriesRows.sort((a, b) => a.date.localeCompare(b.date)),
             points: seriesRows.sort((a, b) => a.date.localeCompare(b.date)).map(row => ({
               x: xForRowDate(row),
-              y: yForValue(row.predictedSales),
+              y: useSecondaryShopScale ? yForSecondaryShopValue(row.predictedSales) : yForValue(row.predictedSales),
               row
             }))
           }))
@@ -1537,7 +1545,7 @@
         <line x1="${Math.max(pad.left, width - 370)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 336)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 328)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 202)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 168)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
-        <text x="${Math.max(pad.left, width - 160)}" y="${pad.top + 13}" class="axis-label">Projected shops</text>
+        <text x="${Math.max(pad.left, width - 160)}" y="${pad.top + 13}" class="axis-label">${options.shopLegendLabel || "Projected shops"}</text>
       ` : "";
       const shopPaths = shopSeries.map(series => {
         const pointsAttr = series.points.map(point => `${point.x},${point.y}`).join(" ");
@@ -1688,12 +1696,12 @@
       const granularityLabel = metricLabel(granularitySelect.value).replace("day", "Daily").replace("week", "Weekly").replace("month", "Monthly");
       document.getElementById("chartTitle").textContent = metric === "sales"
         ? (isAllGenres
-            ? `${granularityLabel} TENKI Sales for ${genreLabel(genre)}`
+            ? `${granularityLabel} TENKI vs Projected Competitors for ${genreLabel(genre)}`
             : `${granularityLabel} TENKI vs Projected Competitor Shops for ${genreLabel(genre)}`)
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
         ? (isAllGenres
-            ? `Teal shows observed TENKI sales across every genre for ${selectedLabel || "the selected range"}. Purple shows estimated competitor sales, scaled separately so the TENKI trend stays readable.`
+            ? `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitors separately, scaled together so their shapes are visible and not added together.`
             : `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately.`)
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
@@ -1721,14 +1729,15 @@
         trendRows,
         metric,
         marketTrendRows,
-        isAllGenres ? [] : shopTrendRows,
+        shopTrendRows,
         {
           area: metric === "sales",
           markers: metric === "sales" && trendRows.length <= 260,
           forceLinear: isAllGenres && metric === "sales",
           compactDates: isAllGenres && granularitySelect.value === "month",
           showCoverage: metric === "sales" && granularitySelect.value !== "day",
-          secondaryMarketScale: isAllGenres && metric === "sales"
+          secondaryShopScale: isAllGenres && metric === "sales",
+          shopLegendLabel: isAllGenres ? "Projected competitors" : "Projected shops"
         }
       );
       if (metric === "sales" && document.getElementById("trendChart").dataset.scale === "log") {
