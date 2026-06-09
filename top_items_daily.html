@@ -1411,13 +1411,17 @@
       const plotH = Math.max(1, innerH - topGap);
       const showShopProjection = metric === "sales" && shopRows && shopRows.length;
       const showMarketProjection = metric === "sales" && !showShopProjection && marketRows && marketRows.length;
-      const marketMax = showMarketProjection ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
+      const useSecondaryMarketScale = Boolean(options.secondaryMarketScale && showMarketProjection);
+      const marketMax = showMarketProjection && !useSecondaryMarketScale ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
+      const secondaryMarketMax = useSecondaryMarketScale
+        ? Math.max(...marketRows.map(row => row.projectedMissingSales || 0), 1)
+        : 0;
       const shopMax = showShopProjection ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
       const rawMax = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
       const max = rawMax * 1.18;
       const chartValues = [
         ...rows.map(row => row[metric] || 0),
-        ...(showMarketProjection ? marketRows.map(row => row.projectedTotalSales || 0) : []),
+        ...(showMarketProjection && !useSecondaryMarketScale ? marketRows.map(row => row.projectedTotalSales || 0) : []),
         ...(showShopProjection ? shopRows.map(row => row.predictedSales || 0) : [])
       ].filter(value => value > 0).sort((a, b) => a - b);
       const medianValue = chartValues.length ? chartValues[Math.floor(chartValues.length / 2)] : 0;
@@ -1435,6 +1439,10 @@
           return pad.top + topGap + plotH - (Math.log10((value || 0) + 1) / Math.log10(max + 1)) * plotH;
         }
         return pad.top + topGap + plotH - ((value || 0) / max) * plotH;
+      }
+
+      function yForSecondaryMarketValue(value) {
+        return pad.top + topGap + plotH - ((value || 0) / (secondaryMarketMax * 1.18)) * plotH;
       }
 
       const points = rows.map((row, index) => {
@@ -1458,7 +1466,7 @@
 
       const marketPoints = showMarketProjection ? marketRows.map((row, index) => ({
         x: xForRowDate(row),
-        y: yForValue(row.projectedTotalSales),
+        y: useSecondaryMarketScale ? yForSecondaryMarketValue(row.projectedMissingSales) : yForValue(row.projectedTotalSales),
         row
       })) : [];
       const shopColors = ["#8b6ee8", "#b15dd6", "#6d7fe8", "#9b5bb8", "#5d95d6"];
@@ -1524,7 +1532,7 @@
         <line x1="${Math.max(pad.left, width - 340)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 306)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 298)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 190)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 156)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
-        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">Ranked market</text>
+        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">${useSecondaryMarketScale ? "Projected competitors" : "Ranked market"}</text>
       ` : showShopProjection ? `
         <line x1="${Math.max(pad.left, width - 370)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 336)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 328)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
@@ -1685,7 +1693,7 @@
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
         ? (isAllGenres
-            ? `Teal shows observed TENKI sales across every genre for ${selectedLabel || "the selected range"}.`
+            ? `Teal shows observed TENKI sales across every genre for ${selectedLabel || "the selected range"}. Purple shows estimated competitor sales, scaled separately so the TENKI trend stays readable.`
             : `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately.`)
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
@@ -1712,14 +1720,15 @@
       drawTrend(
         trendRows,
         metric,
-        isAllGenres ? [] : marketTrendRows,
+        marketTrendRows,
         isAllGenres ? [] : shopTrendRows,
         {
           area: metric === "sales",
           markers: metric === "sales" && trendRows.length <= 260,
           forceLinear: isAllGenres && metric === "sales",
           compactDates: isAllGenres && granularitySelect.value === "month",
-          showCoverage: metric === "sales" && granularitySelect.value !== "day"
+          showCoverage: metric === "sales" && granularitySelect.value !== "day",
+          secondaryMarketScale: isAllGenres && metric === "sales"
         }
       );
       if (metric === "sales" && document.getElementById("trendChart").dataset.scale === "log") {
