@@ -1529,8 +1529,8 @@
         <polyline points="${path}" fill="none" stroke="#117a72" stroke-width="${options.area ? 4 : 2.8}" stroke-linecap="round" stroke-linejoin="round"></polyline>
         ${pointMarkers}
         <line x1="${pad.left}" y1="${pad.top + innerH}" x2="${width - pad.right}" y2="${pad.top + innerH}" stroke="#cfd6df"></line>
-        <circle cx="${points[0]?.x || pad.left}" cy="${points[0]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
-        <circle cx="${points[points.length - 1]?.x || pad.left}" cy="${points[points.length - 1]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>
+        ${!options.markers ? `<circle cx="${points[0]?.x || pad.left}" cy="${points[0]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>` : ""}
+        ${!options.markers ? `<circle cx="${points[points.length - 1]?.x || pad.left}" cy="${points[points.length - 1]?.y || pad.top + innerH}" r="5" fill="#d97706" stroke="#fff" stroke-width="2"></circle>` : ""}
         ${marketLegend}
         ${useLogScale ? `<text x="${pad.left}" y="${pad.top + 13}" class="axis-label">Log scale</text>` : ""}
         <text x="${pad.left}" y="${height - 10}" class="axis-label">${options.compactDates ? minDate.slice(0, 7) : minDate}</text>
@@ -1665,7 +1665,7 @@
       document.getElementById("chartNote").textContent = metric === "sales"
         ? (isAllGenres
             ? `Teal shows observed TENKI sales across every genre for ${selectedLabel || "the selected range"}.`
-            : `Green is observed TENKI sales. Purple lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately, not summed together.`)
+            : `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately.`)
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
@@ -1694,8 +1694,8 @@
         isAllGenres ? [] : marketTrendRows,
         isAllGenres ? [] : shopTrendRows,
         {
-          area: isAllGenres && metric === "sales",
-          markers: isAllGenres && metric === "sales",
+          area: metric === "sales",
+          markers: metric === "sales" && trendRows.length <= 260,
           forceLinear: isAllGenres && metric === "sales",
           compactDates: isAllGenres && granularitySelect.value === "month"
         }
