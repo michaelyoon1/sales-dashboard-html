@@ -1161,9 +1161,29 @@
       }
       const topShopList = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, projectedMarketData.method?.shopSeriesPerGenre || 5).map(([shop]) => shop);
       const topShops = new Set(topShopList);
-      return rows
-        .filter(row => topShops.has(row.shop))
-        .map(row => ({ ...row, shopSeriesRank: topShopList.indexOf(row.shop) + 1 }));
+      const buckets = new Map();
+      for (const row of rows) {
+        if (!topShops.has(row.shop)) continue;
+        const key = `${row.shop}|${row.date}`;
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            date: row.date,
+            shop: row.shop,
+            shopSeriesRank: topShopList.indexOf(row.shop) + 1,
+            predictedSales: 0,
+            projectedRows: 0,
+            avgRankTotal: 0,
+            avgRankCount: 0
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.predictedSales += row.predictedSales || 0;
+        bucket.projectedRows += row.projectedRows || 0;
+        bucket.avgRankTotal += row.avgRank || 0;
+        bucket.avgRankCount += 1;
+        bucket.avgRank = bucket.avgRankCount ? bucket.avgRankTotal / bucket.avgRankCount : 0;
+      }
+      return [...buckets.values()].sort((a, b) => (a.shopSeriesRank - b.shopSeriesRank) || a.date.localeCompare(b.date));
     }
 
     function sumProjection(rows) {
@@ -1374,11 +1394,14 @@
       const pad = { top: 16, right: 18, bottom: 34, left: 74 };
       const innerW = Math.max(1, width - pad.left - pad.right);
       const innerH = Math.max(1, height - pad.top - pad.bottom);
+      const topGap = metric === "sales" ? 24 : 0;
+      const plotH = Math.max(1, innerH - topGap);
       const showShopProjection = metric === "sales" && shopRows && shopRows.length;
       const showMarketProjection = metric === "sales" && !showShopProjection && marketRows && marketRows.length;
       const marketMax = showMarketProjection ? Math.max(...marketRows.map(row => row.projectedTotalSales || 0), 0) : 0;
       const shopMax = showShopProjection ? Math.max(...shopRows.map(row => row.predictedSales || 0), 0) : 0;
-      const max = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
+      const rawMax = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
+      const max = rawMax * 1.18;
       const chartValues = [
         ...rows.map(row => row[metric] || 0),
         ...(showMarketProjection ? marketRows.map(row => row.projectedTotalSales || 0) : []),
@@ -1396,9 +1419,9 @@
 
       function yForValue(value) {
         if (useLogScale) {
-          return pad.top + innerH - (Math.log10((value || 0) + 1) / Math.log10(max + 1)) * innerH;
+          return pad.top + topGap + plotH - (Math.log10((value || 0) + 1) / Math.log10(max + 1)) * plotH;
         }
-        return pad.top + innerH - ((value || 0) / max) * innerH;
+        return pad.top + topGap + plotH - ((value || 0) / max) * plotH;
       }
 
       const points = rows.map((row, index) => {
