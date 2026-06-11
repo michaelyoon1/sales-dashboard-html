@@ -931,6 +931,7 @@
     const applyCustomRange = document.getElementById("applyCustomRange");
     const clearCustomRange = document.getElementById("clearCustomRange");
     let lastRenderedGenreValue = "";
+    let pendingGenreUpdateId = 0;
     let genreChangeTimer = null;
 
     const totalsByGenre = new Map();
@@ -1885,19 +1886,24 @@
       document.getElementById("chartNote").textContent = "Loading the selected genre chart.";
     }
 
+    function scheduleGenreUpdate() {
+      const scheduledGenre = genreSelect.value;
+      const updateId = pendingGenreUpdateId + 1;
+      pendingGenreUpdateId = updateId;
+      lastRenderedGenreValue = scheduledGenre;
+      renderChartLoading();
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          if (updateId !== pendingGenreUpdateId || genreSelect.value !== scheduledGenre) return;
+          update();
+        }, 0);
+      });
+    }
+
     function queueGenreUpdate() {
       window.clearTimeout(genreChangeTimer);
-      renderChartLoading();
       genreChangeTimer = window.setTimeout(() => {
-        genreChangeTimer = null;
-        try {
-          update();
-        } catch (error) {
-          console.error(error);
-          lastRenderedGenreValue = "";
-          document.getElementById("chartTitle").textContent = "Chart update failed";
-          document.getElementById("chartNote").textContent = "Try selecting the genre again.";
-        }
+        scheduleGenreUpdate();
       }, 80);
     }
 
