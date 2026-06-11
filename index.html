@@ -727,7 +727,7 @@
 
     <section class="kpis" aria-label="Selected range summary">
       <article class="card">
-        <span>Genre Sales</span>
+        <span>Estimated Rakuten Sales</span>
         <strong id="kpiSales">-</strong>
         <small id="kpiSalesSub">Selected range total</small>
       </article>
@@ -748,27 +748,27 @@
       </article>
     </section>
 
-    <section class="panel projection-panel" aria-label="Estimated competitor sales">
+    <section class="panel projection-panel" aria-label="Estimated total Rakuten sales">
       <div class="panel-title">
         <div>
-          <h2>Estimated Competitor Sales</h2>
-          <p class="note" id="projectionNote">Row-level model that uses matched TENKI sales to estimate missing ranked competitor sales from the Rakuten ranking files.</p>
+          <h2>Estimated Total Rakuten Sales</h2>
+          <p class="note" id="projectionNote">Row-level model that combines known TENKI ranked sales with modeled missing ranked sales from the Rakuten ranking files.</p>
         </div>
         <span id="projectionRange">Model range</span>
       </div>
       <div class="projection-grid">
         <article class="projection-card">
-          <span>Matched TENKI Sales</span>
+          <span>Known TENKI Ranked Sales</span>
           <strong id="observedMarketSales">-</strong>
           <small id="observedMarketSub">Ranking rows with actual TENKI sales</small>
         </article>
         <article class="projection-card">
-          <span>Estimated Competitor Sales</span>
+          <span>Modeled Missing Sales</span>
           <strong id="projectedMissingSales">-</strong>
           <small id="projectedMissingSub">Predicted missing ranked rows</small>
         </article>
         <article class="projection-card">
-          <span>Estimated Ranked Market</span>
+          <span>Estimated Total Sales</span>
           <strong id="projectedTotalSales">-</strong>
           <small id="projectedTotalSub">TENKI matches plus competitor estimates</small>
         </article>
@@ -797,10 +797,10 @@
       </div>
       <div id="marketBar" class="market-bar" aria-hidden="true"><span></span><span></span></div>
       <div class="legend">
-        <span><i class="observed-dot"></i>Actual TENKI sales</span>
-        <span><i class="projected-dot"></i>Projected competitor shops</span>
+        <span><i class="observed-dot"></i>Known TENKI ranked sales</span>
+        <span><i class="projected-dot"></i>Modeled missing ranked sales</span>
       </div>
-      <p class="note">Model method: matched TENKI ranking rows train a log-sales model using genre, rank, rank bucket, price band, weekday, month, event context, price, and recent genre-sales level. Validation repeats hidden 5% known-row trials, and the chart separates the top projected competitor shops instead of summing them into one line.</p>
+      <p class="note">Model method: matched TENKI ranking rows train a log-sales model using genre, rank, rank bucket, price band, weekday, month, event context, price, and recent genre-sales level. Validation repeats hidden 5% known-row trials. The main sales chart shows one combined final estimate.</p>
     </section>
 
     <section class="panel event-panel" aria-label="Event impact">
@@ -1430,6 +1430,20 @@
       return [...buckets.values()].sort((a, b) => (a.shopSeriesRank - b.shopSeriesRank) || a.date.localeCompare(b.date));
     }
 
+    function marketEstimateTrendRows(rows, coverageRows = []) {
+      const coverageByDate = new Map(coverageRows.map(row => [row.date, row]));
+      return rows.map(row => ({
+        ...row,
+        sales: row.projectedTotalSales || 0,
+        salesItems: row.rankedRows || 0,
+        pv: row.observedRows || 0,
+        itemCount: row.rankedRows || 0,
+        coverageDays: coverageByDate.get(row.date)?.coverageDays,
+        expectedDays: coverageByDate.get(row.date)?.expectedDays,
+        lowCoverage: coverageByDate.get(row.date)?.lowCoverage || false
+      }));
+    }
+
     function moveDate(offset) {
       const dates = availableDates();
       const range = normalizedRange();
@@ -1598,12 +1612,12 @@
         <line x1="${Math.max(pad.left, width - 340)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 306)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 298)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 190)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 156)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
-        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">${useSecondaryMarketScale ? "Projected competitors" : "Ranked market"}</text>
+        <text x="${Math.max(pad.left, width - 148)}" y="${pad.top + 13}" class="axis-label">${useSecondaryMarketScale ? "Modeled missing sales" : "Estimated total"}</text>
       ` : showShopProjection ? `
         <line x1="${Math.max(pad.left, width - 370)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 336)}" y2="${pad.top + 9}" stroke="#15616d" stroke-width="3"></line>
         <text x="${Math.max(pad.left, width - 328)}" y="${pad.top + 13}" class="axis-label">Observed TENKI</text>
         <line x1="${Math.max(pad.left, width - 202)}" y1="${pad.top + 9}" x2="${Math.max(pad.left, width - 168)}" y2="${pad.top + 9}" stroke="#8b6ee8" stroke-width="3" stroke-dasharray="7 6"></line>
-        <text x="${Math.max(pad.left, width - 160)}" y="${pad.top + 13}" class="axis-label">${options.shopLegendLabel || "Projected shops"}</text>
+        <text x="${Math.max(pad.left, width - 160)}" y="${pad.top + 13}" class="axis-label">${options.shopLegendLabel || "Model estimate"}</text>
       ` : "";
       const shopPaths = shopSeries.map(series => {
         const pointsAttr = series.points.map(point => `${point.x},${point.y}`).join(" ");
@@ -1726,7 +1740,9 @@
       const trendRows = aggregateTrendRows(selectedRows, granularitySelect.value);
       const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
       const marketTrendRows = aggregateProjectionTrendRows(projectedRows, granularitySelect.value);
-      const shopTrendRows = aggregateShopTrendRows(projectionShopRows(genre, selectedRange.start, selectedRange.end), granularitySelect.value);
+      const totalMarketTrendRows = metricSelect.value === "sales" && marketTrendRows.length
+        ? marketEstimateTrendRows(marketTrendRows, trendRows)
+        : trendRows;
       const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
@@ -1739,9 +1755,12 @@
       const metric = metricSelect.value;
       const cvr = selectedTotal.pv ? selectedTotal.salesItems * 100 / selectedTotal.pv : 0;
       const selectedLabel = rangeLabel(selectedRange.start, selectedRange.end);
+      const estimatedSales = projection.projectedTotalSales || selectedTotal.sales || 0;
 
-      document.getElementById("kpiSales").textContent = fmtYen.format(selectedTotal.sales || 0);
-      document.getElementById("kpiSalesSub").textContent = `${selectedLabel || "-"} total for ${genreLabel(genre)}`;
+      document.getElementById("kpiSales").textContent = fmtYen.format(estimatedSales);
+      document.getElementById("kpiSalesSub").textContent = metric === "sales" && projection.projectedTotalSales
+        ? `${selectedLabel || "-"} final estimate for ${genreLabel(genre)}`
+        : `${selectedLabel || "-"} TENKI total for ${genreLabel(genre)}`;
       document.getElementById("kpiItems").textContent = fmtNum.format(selectedTotal.salesItems || 0);
       document.getElementById("kpiItemsSub").textContent = `${fmtNum.format(items.length || 0)} ranked items in range`;
       document.getElementById("kpiPv").textContent = fmtNum.format(selectedTotal.pv || 0);
@@ -1753,30 +1772,26 @@
 
       const granularityLabel = metricLabel(granularitySelect.value).replace("day", "Daily").replace("week", "Weekly").replace("month", "Monthly");
       document.getElementById("chartTitle").textContent = metric === "sales"
-        ? (isAllGenres
-            ? `${granularityLabel} TENKI vs Projected Competitors for ${genreLabel(genre)}`
-            : `${granularityLabel} TENKI vs Projected Competitor Shops for ${genreLabel(genre)}`)
+        ? `${granularityLabel} Estimated Total Rakuten Sales for ${genreLabel(genre)}`
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
-        ? (isAllGenres
-            ? `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitors separately, scaled together so their shapes are visible and not added together.`
-            : `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately.`)
+        ? `Teal area shows the combined final estimate: known TENKI ranked sales plus modeled missing ranked sales.`
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
       document.getElementById("tableTitle").textContent = `Top Items from ${selectedLabel || "-"}`;
 
-      const comparisonMax = Math.max(projection.observedSales || 0, projection.projectedTotalSales || 0, 1);
-      const observedShare = Math.max(1, projection.observedSales / comparisonMax * 100);
-      const projectedShare = Math.max(1, projection.projectedTotalSales / comparisonMax * 100);
+      const comparisonMax = Math.max((projection.observedSales || 0) + (projection.projectedMissingSales || 0), 1);
+      const observedShare = Math.max(1, (projection.observedSales || 0) / comparisonMax * 100);
+      const projectedShare = Math.max(1, (projection.projectedMissingSales || 0) / comparisonMax * 100);
       const coveragePct = projection.rankedRows ? projection.observedRows * 100 / projection.rankedRows : 0;
       const projectedMultiplier = projection.observedSales ? projection.projectedTotalSales / projection.observedSales : 0;
       document.getElementById("projectionRange").textContent = selectedLabel || "Model range";
       document.getElementById("observedMarketSales").textContent = fmtYen.format(projection.observedSales || 0);
       document.getElementById("observedMarketSub").textContent = `${fmtNum.format(projection.observedRows)} ranked rows matched from ${fmtNum.format(projection.rankedRows)} ranking rows`;
       document.getElementById("projectedMissingSales").textContent = fmtYen.format(projection.projectedMissingSales || 0);
-      document.getElementById("projectedMissingSub").textContent = `${fmtNum.format(projection.projectedRows || 0)} competitor ranking rows estimated`;
+      document.getElementById("projectedMissingSub").textContent = `${fmtNum.format(projection.projectedRows || 0)} missing ranking rows estimated`;
       document.getElementById("projectedTotalSales").textContent = fmtYen.format(projection.projectedTotalSales || 0);
-      document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x matched TENKI ranked sales` : "TENKI matches plus competitor estimates";
+      document.getElementById("projectedTotalSub").textContent = projectedMultiplier ? `${fmtPct.format(projectedMultiplier)}x known TENKI ranked sales` : "Known TENKI plus modeled missing sales";
       document.getElementById("observedCoverage").textContent = `${fmtPct.format(coveragePct)}%`;
       document.getElementById("observedCoverageSub").textContent = `${fmtNum.format(projection.observedRows || 0)} matched / ${fmtNum.format(projection.projectedRows || 0)} estimated`;
       const validation = projectedMarketData.method?.validation || {};
@@ -1794,18 +1809,16 @@
       syncPresetButtons();
       syncRangeShiftButtons();
       drawTrend(
-        trendRows,
+        totalMarketTrendRows,
         metric,
-        marketTrendRows,
-        shopTrendRows,
+        null,
+        null,
         {
           area: metric === "sales",
-          markers: metric === "sales" && trendRows.length <= 260,
+          markers: metric === "sales" && totalMarketTrendRows.length <= 260,
           forceLinear: isAllGenres && metric === "sales",
           compactDates: isAllGenres && granularitySelect.value === "month",
-          showCoverage: metric === "sales" && granularitySelect.value !== "day",
-          secondaryShopScale: isAllGenres && metric === "sales",
-          shopLegendLabel: isAllGenres ? "Projected competitors" : "Projected shops"
+          showCoverage: metric === "sales" && granularitySelect.value !== "day"
         }
       );
       if (metric === "sales" && document.getElementById("trendChart").dataset.scale === "log") {
