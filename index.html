@@ -931,6 +931,7 @@
     const applyCustomRange = document.getElementById("applyCustomRange");
     const clearCustomRange = document.getElementById("clearCustomRange");
     let lastRenderedGenreValue = "";
+    let pendingGenreUpdateId = 0;
 
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
@@ -1869,6 +1870,35 @@
       renderTopDays(rows);
     }
 
+    function renderChartLoading() {
+      const genre = genreSelect.value;
+      const svg = document.getElementById("trendChart");
+      const width = svg.clientWidth || 900;
+      const height = svg.clientHeight || 330;
+      svg.dataset.genre = `loading:${genre}`;
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.innerHTML = `
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"></rect>
+        <text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="axis-label">Updating chart...</text>
+      `;
+      document.getElementById("chartTitle").textContent = `Updating ${genreLabel(genre)}`;
+      document.getElementById("chartNote").textContent = "Loading the selected genre chart.";
+    }
+
+    function scheduleGenreUpdate() {
+      const scheduledGenre = genreSelect.value;
+      const updateId = pendingGenreUpdateId + 1;
+      pendingGenreUpdateId = updateId;
+      lastRenderedGenreValue = scheduledGenre;
+      renderChartLoading();
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          if (updateId !== pendingGenreUpdateId || genreSelect.value !== scheduledGenre) return;
+          update();
+        }, 0);
+      });
+    }
+
     setGenreOptions();
     renderGenreList();
     rangePresetSelect.value = "all";
@@ -1883,7 +1913,7 @@
         rangePresetSelect.value = "all";
         granularitySelect.value = "month";
       }
-      update();
+      scheduleGenreUpdate();
     }
     genreSelect.addEventListener("change", handleGenreSelectionChange);
     genreSelect.addEventListener("input", handleGenreSelectionChange);
