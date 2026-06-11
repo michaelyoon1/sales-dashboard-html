@@ -908,6 +908,25 @@
         .join(" ");
     }
 
+    function eventDurationDays(row) {
+      const start = new Date(`${row.startDate}T00:00:00`).getTime();
+      const end = new Date(`${row.endDate}T00:00:00`).getTime();
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+      return Math.floor((end - start) / 86400000) + 1;
+    }
+
+    function eventBandRange(windowRow, granularity) {
+      if (granularity === "month") {
+        const startDate = firstDayOfMonth(windowRow.startDate);
+        return { startDate, endDate: addDays(addMonths(startDate, 1), -1) };
+      }
+      if (granularity === "week") {
+        const startDate = weekKey(windowRow.startDate);
+        return { startDate, endDate: addDays(startDate, 6) };
+      }
+      return { startDate: windowRow.startDate, endDate: windowRow.endDate };
+    }
+
     function superSaleWindowsForRange(start, end) {
       return (eventData.windows || [])
         .filter(row => row.name === "supersale")
@@ -917,7 +936,7 @@
           startDate: row.startDate,
           endDate: row.endDate
         }))
-        .filter(row => row.startDate && row.endDate && row.endDate >= start && row.startDate <= end)
+        .filter(row => row.startDate && row.endDate && eventDurationDays(row) <= 14 && row.endDate >= start && row.startDate <= end)
         .sort((a, b) => a.startDate.localeCompare(b.startDate));
     }
 
@@ -1101,8 +1120,9 @@
       const eventWindows = options.events || [];
       const labelEvents = eventWindows.length <= 18;
       eventWindows.forEach(windowRow => {
-        const startMs = Math.max(xMin, new Date(`${windowRow.startDate}T00:00:00`).getTime());
-        const endMs = Math.min(xMax, new Date(`${windowRow.endDate}T00:00:00`).getTime());
+        const bandRange = eventBandRange(windowRow, options.eventGranularity);
+        const startMs = Math.max(xMin, new Date(`${bandRange.startDate}T00:00:00`).getTime());
+        const endMs = Math.min(xMax, new Date(`${bandRange.endDate}T00:00:00`).getTime());
         if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < xMin || startMs > xMax) return;
         const left = x(startMs);
         const right = x(endMs);
@@ -1425,6 +1445,7 @@
       renderSuperSaleFocus(rows, superSaleWindows);
       drawLineChart("totalChart", chartRows, {
         events: superSaleWindows,
+        eventGranularity: state.granularity,
         click: hit => {
           state.rangePreset = "custom";
           state.startDate = hit.data.date;
