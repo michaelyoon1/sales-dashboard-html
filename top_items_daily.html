@@ -1187,14 +1187,63 @@
       return rangeRows(projectedByGenre.get(genre) || [], start, end);
     }
 
-    function projectionShopRows(genre, start, end) {
+    function periodKeyForDate(date, granularity) {
+      if (granularity === "week") return weekKey(date);
+      if (granularity === "month") return monthKey(date);
+      return date;
+    }
+
+    function pearsonCorrelation(first, second) {
+      const count = Math.min(first.length, second.length);
+      if (count < 3) return 0;
+      const firstMean = first.reduce((sum, value) => sum + value, 0) / count;
+      const secondMean = second.reduce((sum, value) => sum + value, 0) / count;
+      let numerator = 0;
+      let firstVariance = 0;
+      let secondVariance = 0;
+      for (let index = 0; index < count; index += 1) {
+        const firstCentered = first[index] - firstMean;
+        const secondCentered = second[index] - secondMean;
+        numerator += firstCentered * secondCentered;
+        firstVariance += firstCentered * firstCentered;
+        secondVariance += secondCentered * secondCentered;
+      }
+      const denominator = Math.sqrt(firstVariance * secondVariance);
+      return denominator ? numerator / denominator : 0;
+    }
+
+    function projectionShopRows(genre, start, end, referenceTrendRows = [], granularity = "month") {
       if (genre !== ALL_GENRES) return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
       const rows = rangeRows(allProjectedShopRows, start, end);
       const totals = new Map();
+      const periods = referenceTrendRows.map(row => row.date);
+      const referenceByPeriod = new Map(referenceTrendRows.map(row => [row.date, Math.log1p(row.sales || 0)]));
+      const byShopPeriod = new Map();
+      const activePeriods = new Map();
       for (const row of rows) {
         totals.set(row.shop, (totals.get(row.shop) || 0) + (row.predictedSales || 0));
+        const period = periodKeyForDate(row.date, granularity);
+        const key = `${row.shop}|${period}`;
+        byShopPeriod.set(key, (byShopPeriod.get(key) || 0) + (row.predictedSales || 0));
       }
-      const topShopList = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, projectedMarketData.method?.shopSeriesPerGenre || 5).map(([shop]) => shop);
+      for (const [key, value] of byShopPeriod.entries()) {
+        if (value <= 0) continue;
+        const shop = key.split("|")[0];
+        activePeriods.set(shop, (activePeriods.get(shop) || 0) + 1);
+      }
+      const maxTotal = Math.max(...totals.values(), 1);
+      const referenceValues = periods.map(period => referenceByPeriod.get(period) || 0);
+      const shopScores = [...totals.entries()].map(([shop, total]) => {
+        const shopValues = periods.map(period => Math.log1p(byShopPeriod.get(`${shop}|${period}`) || 0));
+        const correlation = pearsonCorrelation(referenceValues, shopValues);
+        const coverage = periods.length ? (activePeriods.get(shop) || 0) / periods.length : 0;
+        const volumeWeight = Math.log1p(total) / Math.log1p(maxTotal);
+        return { shop, total, correlation, coverage, score: correlation * 0.78 + volumeWeight * 0.22 };
+      });
+      const meaningfulShops = shopScores.filter(row => row.total >= maxTotal * 0.05 && row.coverage >= 0.12 && row.correlation > 0);
+      const rankedShops = (meaningfulShops.length >= (projectedMarketData.method?.shopSeriesPerGenre || 5) ? meaningfulShops : shopScores)
+        .sort((a, b) => (b.score - a.score) || (b.correlation - a.correlation) || (b.total - a.total));
+      const topShopList = rankedShops.slice(0, projectedMarketData.method?.shopSeriesPerGenre || 5).map(row => row.shop);
       const topShops = new Set(topShopList);
       const buckets = new Map();
       for (const row of rows) {
@@ -1715,7 +1764,10 @@
       const trendRows = aggregateTrendRows(selectedRows, granularitySelect.value);
       const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
       const marketTrendRows = aggregateProjectionTrendRows(projectedRows, granularitySelect.value);
-      const shopTrendRows = aggregateShopTrendRows(projectionShopRows(genre, selectedRange.start, selectedRange.end), granularitySelect.value);
+      const shopTrendRows = aggregateShopTrendRows(
+        projectionShopRows(genre, selectedRange.start, selectedRange.end, trendRows, granularitySelect.value),
+        granularitySelect.value
+      );
       const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
@@ -1748,7 +1800,7 @@
         : `${granularityLabel} ${metricLabel(metric)} for ${genreLabel(genre)}`;
       document.getElementById("chartNote").textContent = metric === "sales"
         ? (isAllGenres
-            ? `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitors separately, scaled together so their shapes are visible and not added together.`
+            ? `Teal area shows observed TENKI sales. Purple dashed lines show ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitors whose trend is most similar to TENKI, scaled together so their shapes are visible and not added together.`
             : `Teal area shows observed TENKI sales. Purple dashed lines show the top ${fmtNum.format(projectedMarketData.method?.shopSeriesPerGenre || 5)} projected competitor shops separately.`)
         : `Showing ${selectedLabel || "the selected range"}.`;
       document.getElementById("dateRange").textContent = selectedLabel || "-";
