@@ -930,6 +930,7 @@
     const datePopover = document.getElementById("datePopover");
     const applyCustomRange = document.getElementById("applyCustomRange");
     const clearCustomRange = document.getElementById("clearCustomRange");
+    let lastRenderedGenreValue = "";
 
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
@@ -1783,6 +1784,8 @@
       const metric = metricSelect.value;
       const cvr = selectedTotal.pv ? selectedTotal.salesItems * 100 / selectedTotal.pv : 0;
       const selectedLabel = rangeLabel(selectedRange.start, selectedRange.end);
+      document.getElementById("trendChart").dataset.genre = genre;
+      lastRenderedGenreValue = genre;
 
       document.getElementById("kpiSales").textContent = fmtYen.format(selectedTotal.sales || 0);
       document.getElementById("kpiSalesSub").textContent = `${selectedLabel || "-"} total for ${genreLabel(genre)}`;
@@ -1873,7 +1876,7 @@
     setDateBounds();
     update();
 
-    genreSelect.addEventListener("change", () => {
+    function handleGenreSelectionChange() {
       startDateInput.value = "";
       endDateInput.value = "";
       if (genreSelect.value === ALL_GENRES) {
@@ -1881,7 +1884,14 @@
         granularitySelect.value = "month";
       }
       update();
-    });
+    }
+    genreSelect.addEventListener("change", handleGenreSelectionChange);
+    genreSelect.addEventListener("input", handleGenreSelectionChange);
+    setInterval(() => {
+      if (genreSelect.value !== lastRenderedGenreValue) {
+        handleGenreSelectionChange();
+      }
+    }, 250);
     rangePresetSelect.addEventListener("change", () => {
       if (rangePresetSelect.value === "custom") {
         datePopover.classList.add("open");
