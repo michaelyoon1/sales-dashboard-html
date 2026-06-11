@@ -6,18 +6,22 @@
   <title>TENKI Prediction Results</title>
   <style>
     :root {
-      --bg: #f5f7f8;
+      --bg: #eef3f1;
       --panel: #ffffff;
-      --ink: #1f2933;
-      --muted: #667085;
-      --line: #d9e0e7;
-      --soft-line: #edf1f4;
-      --known: #0f766e;
-      --final: #2563eb;
-      --final-soft: rgba(37, 99, 235, 0.16);
-      --missing: #7c3aed;
-      --interval: #344054;
-      --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+      --panel-soft: #f9fbfa;
+      --ink: #1d2b2d;
+      --muted: #687779;
+      --line: #d6dfdb;
+      --soft-line: #edf2ef;
+      --known: #0f7a68;
+      --final: #1d5f99;
+      --final-soft: rgba(29, 95, 153, 0.14);
+      --missing: #8a5a19;
+      --interval: #42515a;
+      --header: #173438;
+      --header-2: #24545a;
+      --accent: #d59b45;
+      --shadow: 0 12px 28px rgba(25, 55, 57, 0.08);
     }
 
     * { box-sizing: border-box; }
@@ -26,9 +30,11 @@
     body {
       margin: 0;
       min-height: 100%;
-      background: var(--bg);
+      background:
+        linear-gradient(180deg, rgba(23, 52, 56, 0.08), transparent 240px),
+        var(--bg);
       color: var(--ink);
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
       font-size: 14px;
       letter-spacing: 0;
     }
@@ -43,16 +49,17 @@
       position: sticky;
       top: 0;
       z-index: 20;
-      border-bottom: 1px solid var(--line);
-      background: rgba(245, 247, 248, 0.96);
-      backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(23, 52, 56, 0.96);
+      color: #fff;
+      backdrop-filter: blur(10px);
     }
 
     .header-inner,
     main {
-      width: min(1440px, 100%);
+      width: min(1500px, 100%);
       margin: 0 auto;
-      padding: 14px 18px;
+      padding: 16px 22px;
     }
 
     .header-inner {
@@ -68,8 +75,12 @@
       line-height: 1.2;
     }
 
-    h1 { font-size: 22px; }
-    h2 { font-size: 16px; }
+    h1 {
+      font-size: 24px;
+      letter-spacing: 0.01em;
+    }
+
+    h2 { font-size: 17px; }
 
     .source-name,
     .status,
@@ -79,19 +90,36 @@
       font-size: 13px;
     }
 
-    .source-name { margin-top: 4px; }
+    .app-header .source-name,
+    .app-header .status {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .status {
+      max-width: 420px;
+      text-align: right;
+      line-height: 1.35;
+    }
+
+    .source-name { margin-top: 5px; }
+
+    main {
+      display: grid;
+      gap: 16px;
+    }
 
     .controls {
       display: grid;
       grid-template-columns: minmax(300px, 1.4fr) minmax(0, 2.2fr);
       gap: 12px;
       align-items: end;
-      margin: 12px 0;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      margin: 0;
+      border: 1px solid rgba(29, 95, 153, 0.14);
+      border-left: 5px solid var(--final);
+      border-radius: 10px;
       background: var(--panel);
       box-shadow: var(--shadow);
-      padding: 12px;
+      padding: 14px;
     }
 
     .toolbar {
@@ -108,10 +136,10 @@
       gap: 8px;
       min-height: 38px;
       border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #fff;
+      border-radius: 7px;
+      background: var(--panel-soft);
       color: var(--muted);
-      padding: 0 12px;
+      padding: 0 11px;
       font-weight: 700;
     }
 
@@ -154,7 +182,7 @@
       min-height: 38px;
       border: 1px solid var(--line);
       border-radius: 6px;
-      background: #fff;
+      background: var(--panel-soft);
       color: var(--ink);
       padding: 8px 10px;
     }
@@ -170,22 +198,27 @@
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
-      margin-bottom: 12px;
+      margin-bottom: 0;
     }
 
     .summary-item,
     .chart-panel,
     .table-panel {
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       background: var(--panel);
       box-shadow: var(--shadow);
     }
 
     .summary-item {
       min-width: 0;
-      padding: 12px;
+      padding: 14px 14px 13px;
+      border-top: 3px solid var(--final);
     }
+
+    .summary-item:nth-child(3) { border-top-color: var(--known); }
+    .summary-item:nth-child(4) { border-top-color: var(--missing); }
+    .summary-item:nth-child(5) { border-top-color: var(--accent); }
 
     .summary-label {
       color: var(--muted);
@@ -198,14 +231,14 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      font-size: 22px;
-      font-weight: 700;
+      font-size: clamp(19px, 1.8vw, 26px);
+      font-weight: 800;
     }
 
     .chart-panel,
     .table-panel {
-      margin-bottom: 12px;
-      padding: 14px;
+      margin-bottom: 0;
+      padding: 16px;
     }
 
     .panel-header {
@@ -213,7 +246,9 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 16px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--soft-line);
     }
 
     .legend {
@@ -234,9 +269,9 @@
 
     .swatch {
       display: inline-block;
-      width: 14px;
-      height: 8px;
-      border-radius: 3px;
+      width: 16px;
+      height: 7px;
+      border-radius: 999px;
     }
 
     .swatch.final { background: var(--final); }
@@ -250,7 +285,9 @@
     .canvas-wrap {
       position: relative;
       width: 100%;
-      height: 420px;
+      height: 430px;
+      border-radius: 8px;
+      background: linear-gradient(180deg, #ffffff, #fbfdfc);
     }
 
     canvas {
@@ -298,12 +335,15 @@
 
     .table-wrap {
       overflow-x: auto;
+      border: 1px solid var(--soft-line);
+      border-radius: 8px;
     }
 
     table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
+      background: #fff;
     }
 
     th,
@@ -318,6 +358,11 @@
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
+      background: var(--panel-soft);
+    }
+
+    tbody tr:hover {
+      background: #f7faf9;
     }
 
     th:first-child,
@@ -373,6 +418,7 @@
 
       .legend { justify-content: flex-start; }
       .canvas-wrap { height: 360px; }
+      .status { text-align: left; }
     }
   </style>
 </head>
