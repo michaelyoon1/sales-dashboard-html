@@ -932,6 +932,7 @@
     const clearCustomRange = document.getElementById("clearCustomRange");
     let lastRenderedGenreValue = "";
     let pendingGenreUpdateId = 0;
+    let genreChangeTimer = null;
 
     const totalsByGenre = new Map();
     const itemsByGenreDate = new Map();
@@ -1899,6 +1900,13 @@
       });
     }
 
+    function queueGenreUpdate() {
+      window.clearTimeout(genreChangeTimer);
+      genreChangeTimer = window.setTimeout(() => {
+        scheduleGenreUpdate();
+      }, 80);
+    }
+
     setGenreOptions();
     renderGenreList();
     rangePresetSelect.value = "all";
@@ -1913,13 +1921,19 @@
         rangePresetSelect.value = "all";
         granularitySelect.value = "month";
       }
-      scheduleGenreUpdate();
+      queueGenreUpdate();
     }
     genreSelect.addEventListener("change", handleGenreSelectionChange);
     genreSelect.addEventListener("input", handleGenreSelectionChange);
+    genreSelect.addEventListener("blur", () => {
+      if (genreSelect.value !== lastRenderedGenreValue) queueGenreUpdate();
+    });
+    genreSelect.addEventListener("pointerup", () => {
+      if (genreSelect.value !== lastRenderedGenreValue) queueGenreUpdate();
+    });
     setInterval(() => {
       if (genreSelect.value !== lastRenderedGenreValue) {
-        handleGenreSelectionChange();
+        queueGenreUpdate();
       }
     }, 250);
     rangePresetSelect.addEventListener("change", () => {
