@@ -1212,11 +1212,8 @@
       return denominator ? numerator / denominator : 0;
     }
 
-    function projectionShopRows(genre, start, end) {
-      return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
-    }
-
-    function projectionAllGenresShopRows(start, end, referenceTrendRows = [], granularity = "month") {
+    function projectionShopRows(genre, start, end, referenceTrendRows = [], granularity = "month") {
+      if (genre !== ALL_GENRES) return rangeRows(projectedShopByGenre.get(genre) || [], start, end);
       const rows = rangeRows(allProjectedShopRows, start, end);
       const totals = new Map();
       const periods = referenceTrendRows.map(row => row.date);
@@ -1767,10 +1764,10 @@
       const trendRows = aggregateTrendRows(selectedRows, granularitySelect.value);
       const projectedRows = projectionRows(genre, selectedRange.start, selectedRange.end);
       const marketTrendRows = aggregateProjectionTrendRows(projectedRows, granularitySelect.value);
-      const chartShopRows = isAllGenres
-        ? projectionAllGenresShopRows(selectedRange.start, selectedRange.end, trendRows, granularitySelect.value)
-        : projectionShopRows(genre, selectedRange.start, selectedRange.end);
-      const shopTrendRows = aggregateShopTrendRows(chartShopRows, granularitySelect.value);
+      const shopTrendRows = aggregateShopTrendRows(
+        projectionShopRows(genre, selectedRange.start, selectedRange.end, trendRows, granularitySelect.value),
+        granularitySelect.value
+      );
       const projection = sumProjection(projectedRows);
       const selectedTotal = selectedRows.reduce((total, row) => ({
         sales: total.sales + (row.sales || 0),
