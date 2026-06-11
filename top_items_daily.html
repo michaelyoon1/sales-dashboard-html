@@ -899,7 +899,7 @@
     </section>
   </main>
 
-  <script src="top_items_daily_data.js?v=english-genres-20260604"></script>
+  <script src="top_items_daily_data.js?v=genre-sales-rebuild-20260611"></script>
   <script src="projected_market_data.js?v=hidden-holdout-5trials-20260610"></script>
   <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
@@ -1366,25 +1366,6 @@
         const coverageRatio = row.expectedDays ? row.coverageDays / row.expectedDays : 1;
         const lowItemCoverage = itemBaseline > 0 && (row.itemCount || 0) < itemBaseline * 0.12;
         row.lowCoverage = coverageRatio < 0.5 || lowItemCoverage;
-        row.missingSales = row.lowCoverage && (row.sales === 0 || lowItemCoverage);
-      }
-      for (let index = 0; index < aggregated.length; index += 1) {
-        const row = aggregated[index];
-        if (!row.missingSales) continue;
-        const previous = [...aggregated.slice(0, index)].reverse().find(candidate => !candidate.missingSales && candidate.sales > 0);
-        const next = aggregated.slice(index + 1).find(candidate => !candidate.missingSales && candidate.sales > 0);
-        if (previous && next) {
-          const periodTime = value => new Date(`${String(value).length === 7 ? `${value}-01` : value}T00:00:00`).getTime();
-          const previousTime = periodTime(previous.startDate || previous.date);
-          const nextTime = periodTime(next.startDate || next.date);
-          const rowTime = periodTime(row.startDate || row.date);
-          const progress = Number.isFinite(previousTime) && Number.isFinite(nextTime) && nextTime !== previousTime
-            ? clamp((rowTime - previousTime) / (nextTime - previousTime), 0, 1)
-            : 0.5;
-          row.chartSales = previous.sales + (next.sales - previous.sales) * progress;
-        } else if (previous || next) {
-          row.chartSales = (previous || next).sales;
-        }
       }
       return aggregated;
     }
@@ -1498,11 +1479,10 @@
       const secondaryShopMax = useSecondaryShopScale
         ? Math.max(...shopRows.map(row => row.predictedSales || 0), 1)
         : 0;
-      const displayValue = row => metric === "sales" && Number.isFinite(row.chartSales) ? row.chartSales : (row[metric] || 0);
-      const rawMax = Math.max(...rows.map(displayValue), marketMax, shopMax, 1);
+      const rawMax = Math.max(...rows.map(row => row[metric] || 0), marketMax, shopMax, 1);
       const max = rawMax * 1.18;
       const chartValues = [
-        ...rows.map(displayValue),
+        ...rows.map(row => row[metric] || 0),
         ...(showMarketProjection && !useSecondaryMarketScale ? marketRows.map(row => row.projectedTotalSales || 0) : []),
         ...(showShopProjection && !useSecondaryShopScale ? shopRows.map(row => row.predictedSales || 0) : [])
       ].filter(value => value > 0).sort((a, b) => a - b);
@@ -1533,7 +1513,7 @@
 
       const points = rows.map((row, index) => {
         const x = xForIndex(index, rows.length);
-        const y = yForValue(displayValue(row));
+        const y = yForValue(row[metric] || 0);
         return { x, y, row };
       });
 
