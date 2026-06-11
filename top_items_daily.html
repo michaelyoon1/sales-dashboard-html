@@ -13,10 +13,12 @@
       --muted: #687779;
       --line: #d6dfdb;
       --soft-line: #edf2ef;
-      --known: #0f7a68;
-      --final: #1d5f99;
-      --final-soft: rgba(29, 95, 153, 0.14);
+      --known: #315d62;
+      --final: #0f7a68;
+      --final-soft: rgba(15, 122, 104, 0.14);
       --missing: #8a5a19;
+      --event: #d88722;
+      --event-soft: rgba(216, 135, 34, 0.18);
       --interval: #42515a;
       --header: #173438;
       --header-2: #24545a;
@@ -277,6 +279,7 @@
     .swatch.final { background: var(--final); }
     .swatch.known { background: var(--known); }
     .swatch.missing { background: var(--missing); }
+    .swatch.event { background: var(--event); }
     .swatch.interval {
       background: var(--final-soft);
       border: 1px solid rgba(37, 99, 235, 0.24);
@@ -288,6 +291,80 @@
       height: 430px;
       border-radius: 8px;
       background: linear-gradient(180deg, #ffffff, #fbfdfc);
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .event-focus {
+      border: 1px solid rgba(216, 135, 34, 0.28);
+      border-radius: 10px;
+      background: #fffaf2;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .event-focus h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .event-focus h2::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--event);
+    }
+
+    .event-stat {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(216, 135, 34, 0.22);
+    }
+
+    .event-stat span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .event-stat strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 22px;
+      line-height: 1.08;
+    }
+
+    .event-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .event-row {
+      display: grid;
+      gap: 3px;
+      border: 1px solid rgba(216, 135, 34, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.66);
+      padding: 9px;
+    }
+
+    .event-row strong {
+      font-size: 13px;
+    }
+
+    .event-row span {
+      color: var(--muted);
+      font-size: 12px;
     }
 
     canvas {
@@ -419,6 +496,9 @@
       .legend { justify-content: flex-start; }
       .canvas-wrap { height: 360px; }
       .status { text-align: left; }
+      .overview-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -476,20 +556,38 @@
 
     <section class="summary-grid" id="summaryGrid" aria-label="Selected summary"></section>
 
-    <section class="chart-panel range-only" id="totalChartPanel">
-      <div class="panel-header">
-        <div>
-          <h2>Total Sales</h2>
-          <div class="panel-meta" id="totalChartMeta"></div>
+    <section class="overview-grid" aria-label="Total sales and event focus">
+      <section class="chart-panel range-only" id="totalChartPanel">
+        <div class="panel-header">
+          <div>
+            <h2>Total Sales</h2>
+            <div class="panel-meta" id="totalChartMeta"></div>
+          </div>
+          <div class="legend">
+            <span><i class="swatch final"></i>Final Estimate</span>
+            <span><i class="swatch event"></i>Super Sale</span>
+            <span><i class="swatch interval"></i>Validation Error Band</span>
+          </div>
         </div>
-        <div class="legend">
-          <span><i class="swatch final"></i>Final Estimate</span>
-          <span><i class="swatch interval"></i>Validation Error Band</span>
+        <div class="canvas-wrap">
+          <canvas id="totalChart"></canvas>
         </div>
-      </div>
-      <div class="canvas-wrap">
-        <canvas id="totalChart"></canvas>
-      </div>
+      </section>
+
+      <aside class="event-focus" aria-label="Super Sale focus">
+        <h2>Super Sale Focus</h2>
+        <p class="note">Highlighted windows show where Super Sale falls inside the selected range.</p>
+        <div class="event-stat">
+          <span>Super Sale Windows</span>
+          <strong id="superSaleWindowCount">-</strong>
+        </div>
+        <div class="event-stat">
+          <span>Highest Super Sale Day</span>
+          <strong id="superSalePeak">-</strong>
+          <small class="note" id="superSalePeakDate">-</small>
+        </div>
+        <div class="event-list" id="superSaleList"></div>
+      </aside>
     </section>
 
     <section class="chart-panel" id="rankChartPanel">
@@ -539,15 +637,18 @@
 
   <script src="top_items_daily_data.js?v=downloads-rebuild-20260611"></script>
   <script src="projected_market_data.js?v=downloads-rebuild-20260611"></script>
+  <script src="event_impact_data.js?v=downloads-events-20260604"></script>
   <script>
     const topData = window.TOP_ITEMS_DAILY_DATA || { genres: [], dailyTotals: [] };
     const modelData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
     const ALL_GENRES = "__all__";
     const colors = {
-      final: "#2563eb",
-      finalSoft: "rgba(37, 99, 235, 0.16)",
-      known: "#0f766e",
-      missing: "#7c3aed",
+      final: "#0f7a68",
+      finalSoft: "rgba(15, 122, 104, 0.14)",
+      known: "#315d62",
+      missing: "#8a5a19",
+      event: "#d88722",
+      eventSoft: "rgba(216, 135, 34, 0.18)",
       interval: "#344054",
       ink: "#1f2933",
       muted: "#667085",
@@ -559,6 +660,7 @@
     const fmtYen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 });
     const fmtNum = new Intl.NumberFormat("en-US");
     const fmtPct = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
+    const eventData = window.EVENT_IMPACT_DATA || { windows: [] };
     const chartState = new Map();
     const params = new URLSearchParams(location.search);
     const state = {
@@ -798,6 +900,31 @@
       return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
     }
 
+    function prettyEventName(name) {
+      return String(name || "event")
+        .split("-")
+        .filter(Boolean)
+        .map(part => part[0]?.toUpperCase() + part.slice(1))
+        .join(" ");
+    }
+
+    function superSaleWindowsForRange(start, end) {
+      return (eventData.windows || [])
+        .filter(row => row.name === "supersale")
+        .map(row => ({
+          name: row.name,
+          label: prettyEventName(row.name),
+          startDate: row.startDate,
+          endDate: row.endDate
+        }))
+        .filter(row => row.startDate && row.endDate && row.endDate >= start && row.startDate <= end)
+        .sort((a, b) => a.startDate.localeCompare(b.startDate));
+    }
+
+    function rowsInsideWindow(rows, windowRow) {
+      return rows.filter(row => row.date >= windowRow.startDate && row.date <= windowRow.endDate);
+    }
+
     function withChartFields(rows) {
       return rows.map(row => {
         const final = row.projectedTotalSales || 0;
@@ -867,6 +994,33 @@
           <div class="summary-value">${escapeHtml(value)}</div>
         </div>
       `).join("");
+    }
+
+    function renderSuperSaleFocus(rows, windows) {
+      el("superSaleWindowCount").textContent = fmtNum.format(windows.length);
+      if (!windows.length) {
+        el("superSalePeak").textContent = "-";
+        el("superSalePeakDate").textContent = "No Super Sale window in selected range";
+        el("superSaleList").innerHTML = `<div class="event-row"><strong>No Super Sale overlap</strong><span>Try All time, March, June, September, or December.</span></div>`;
+        return;
+      }
+      const chartRows = withChartFields(rows);
+      const superRows = windows.flatMap(windowRow => rowsInsideWindow(chartRows, windowRow));
+      const peak = superRows.sort((a, b) => (b.final || 0) - (a.final || 0))[0];
+      el("superSalePeak").textContent = peak ? fmtYen.format(peak.final || 0) : "-";
+      el("superSalePeakDate").textContent = peak ? peak.date : "No daily estimate in selected windows";
+      el("superSaleList").innerHTML = windows.slice(-6).reverse().map(windowRow => {
+        const windowRows = rowsInsideWindow(chartRows, windowRow);
+        const total = windowRows.reduce((sum, row) => sum + (row.final || 0), 0);
+        const peakRow = windowRows.slice().sort((a, b) => (b.final || 0) - (a.final || 0))[0];
+        return `
+          <div class="event-row">
+            <strong>${escapeHtml(windowRow.startDate)} to ${escapeHtml(windowRow.endDate)}</strong>
+            <span>${fmtYen.format(total)} total estimate</span>
+            <span>Peak ${peakRow ? `${peakRow.date} | ${fmtYen.format(peakRow.final || 0)}` : "-"}</span>
+          </div>
+        `;
+      }).join("");
     }
 
     function setupCanvas(canvas) {
@@ -943,6 +1097,36 @@
       const y = value => dims.bottom - (Math.max(0, value) / yMax) * dims.plotH;
       const hits = points.map((row, index) => ({ index, cx: x(row.ms), cy: y(row.final), data: row }));
       drawYAxis(ctx, dims, yMax);
+
+      const eventWindows = options.events || [];
+      const labelEvents = eventWindows.length <= 18;
+      eventWindows.forEach(windowRow => {
+        const startMs = Math.max(xMin, new Date(`${windowRow.startDate}T00:00:00`).getTime());
+        const endMs = Math.min(xMax, new Date(`${windowRow.endDate}T00:00:00`).getTime());
+        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < xMin || startMs > xMax) return;
+        const left = x(startMs);
+        const right = x(endMs);
+        const width = Math.max(3, right - left);
+        ctx.fillStyle = colors.eventSoft;
+        ctx.fillRect(left, dims.top, width, dims.plotH);
+        ctx.strokeStyle = colors.event;
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(left, dims.top);
+        ctx.lineTo(left, dims.bottom);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        if (labelEvents && width > 22) {
+          ctx.save();
+          ctx.translate(left + Math.min(width / 2, 34), dims.top + 8);
+          ctx.fillStyle = colors.event;
+          ctx.font = "700 11px Arial, Helvetica, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "top";
+          ctx.fillText("Super Sale", 0, 0);
+          ctx.restore();
+        }
+      });
 
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
@@ -1236,8 +1420,11 @@
       const label = genreName(state.genre);
       const range = activeRange();
       const rangeLabel = range.start === range.end ? range.start : `${range.start} to ${range.end}`;
+      const superSaleWindows = superSaleWindowsForRange(range.start, range.end);
       renderSummary(rows);
+      renderSuperSaleFocus(rows, superSaleWindows);
       drawLineChart("totalChart", chartRows, {
+        events: superSaleWindows,
         click: hit => {
           state.rangePreset = "custom";
           state.startDate = hit.data.date;
