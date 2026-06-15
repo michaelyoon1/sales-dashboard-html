@@ -408,6 +408,9 @@
     .tooltip-row strong {
       color: var(--ink);
       font-weight: 700;
+      max-width: 190px;
+      text-align: right;
+      white-space: normal;
     }
 
     .table-wrap {
@@ -901,6 +904,23 @@
     }
 
     function prettyEventName(name) {
+      const labels = {
+        "supersale": "Super Sale",
+        "zero-five": "0/5 Day",
+        "ichiba-day": "Ichiba Day",
+        "wonderful-day": "Wonderful Day",
+        "black-friday": "Black Friday",
+        "mothers-day": "Mother's Day",
+        "fathers-day": "Father's Day",
+        "fashionthesale": "Fashion The Sale",
+        "point-back": "Point Back",
+        "thank-you": "Thank You",
+        "newyear-sale": "New Year Sale",
+        "singles-day": "Singles Day",
+        "user-ranking": "User Ranking",
+        "39shop": "39 Shop"
+      };
+      if (labels[name]) return labels[name];
       return String(name || "event")
         .split("-")
         .filter(Boolean)
@@ -927,8 +947,25 @@
       return { startDate: windowRow.startDate, endDate: windowRow.endDate };
     }
 
-    function superSaleWindowsForRange(start, end) {
+    function cleanEventWindows() {
       return (eventData.windows || [])
+        .filter(row => row.name && row.startDate && row.endDate)
+        .filter(row => row.endDate >= row.startDate)
+        .filter(row => row.name !== "supersale" || eventDurationDays(row) <= 14);
+    }
+
+    function eventsForDate(date, granularity = "day") {
+      const range = granularity === "day"
+        ? { startDate: date, endDate: date }
+        : eventBandRange({ startDate: date, endDate: date }, granularity);
+      const names = cleanEventWindows()
+        .filter(row => row.endDate >= range.startDate && row.startDate <= range.endDate)
+        .map(row => prettyEventName(row.name));
+      return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+    }
+
+    function superSaleWindowsForRange(start, end) {
+      return cleanEventWindows()
         .filter(row => row.name === "supersale")
         .map(row => ({
           name: row.name,
@@ -1283,13 +1320,16 @@
           tooltipRow("Band", `${fmtYen.format(row.lo95)} - ${fmtYen.format(row.hi95)}`)
         ].join("");
       }
-      return [
+      const events = eventsForDate(row.date, state.granularity);
+      const rows = [
         `<div class="tooltip-title">${escapeHtml(row.date)}</div>`,
         tooltipRow("Final estimate", fmtYen.format(row.final)),
         tooltipRow("Known TENKI", fmtYen.format(row.known || 0)),
         tooltipRow("Modeled missing", fmtYen.format(row.imputed || 0)),
         tooltipRow("Band", `${fmtYen.format(row.lo95)} - ${fmtYen.format(row.hi95)}`)
-      ].join("");
+      ];
+      if (events.length) rows.push(tooltipRow("Events", events.join(", ")));
+      return rows.join("");
     }
 
     function tooltipFor(canvas) {
