@@ -243,6 +243,35 @@
       padding: 16px;
     }
 
+    .model-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric-card {
+      border: 1px solid var(--soft-line);
+      border-radius: 8px;
+      background: #fbfdfc;
+      padding: 11px;
+    }
+
+    .metric-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .metric-card strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 20px;
+      line-height: 1.1;
+    }
+
     .panel-header {
       display: flex;
       align-items: flex-start;
@@ -464,6 +493,7 @@
       .controls { grid-template-columns: 1fr; }
       .genre-field { grid-column: 1 / -1; }
       .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .model-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 720px) {
@@ -473,7 +503,8 @@
       }
 
       .controls,
-      .summary-grid {
+      .summary-grid,
+      .model-metrics {
         grid-template-columns: 1fr;
       }
 
@@ -591,6 +622,19 @@
         </div>
         <div class="event-list" id="superSaleList"></div>
       </aside>
+    </section>
+
+    <section class="table-panel" aria-label="Model validation">
+      <div class="panel-header">
+        <div>
+          <h2>Model Validation</h2>
+          <div class="panel-meta" id="validationMeta"></div>
+        </div>
+      </div>
+      <div class="model-metrics" id="modelMetricCards"></div>
+      <div class="table-wrap">
+        <table id="genreMetricsTable"></table>
+      </div>
     </section>
 
     <section class="chart-panel" id="rankChartPanel">
@@ -1079,6 +1123,77 @@
       }).join("");
     }
 
+    function pctMetric(value) {
+      const numberValue = Number(value);
+      return Number.isFinite(numberValue) ? `${fmtPct.format(numberValue * 100)}%` : "-";
+    }
+
+    function metricForGenre(metrics, genre) {
+      if (!metrics?.genreBreakdown?.length || genre === ALL_GENRES) return null;
+      return metrics.genreBreakdown.find(row => row.genre === genre) || null;
+    }
+
+    function renderModelValidation() {
+      const validation = modelData.method?.validation || {};
+      const timeValidation = validation.timeValidation || {};
+      const hiddenGenre = metricForGenre(validation, state.genre);
+      const timeGenre = metricForGenre(timeValidation, state.genre);
+      const selectedLabel = state.genre === ALL_GENRES ? "All genres" : genreName(state.genre);
+      const cardRows = [
+        ["Hidden 5% WMAPE", pctMetric(hiddenGenre?.wmape ?? validation.wmape)],
+        ["Hidden Median APE", pctMetric(hiddenGenre?.medianAbsPctError ?? validation.medianAbsPctError)],
+        ["Time Split WMAPE", pctMetric(timeGenre?.wmape ?? timeValidation.wmape)],
+        ["Within 25%", pctMetric(hiddenGenre?.within25Pct ?? validation.within25Pct)]
+      ];
+      el("modelMetricCards").innerHTML = cardRows.map(([label, value]) => `
+        <div class="metric-card">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(value)}</strong>
+        </div>
+      `).join("");
+      const timeRange = timeValidation.testStart && timeValidation.testEnd
+        ? `${timeValidation.testStart} to ${timeValidation.testEnd}`
+        : "recent holdout";
+      el("validationMeta").textContent = `${selectedLabel} | hidden ${validation.hiddenPct || 5}% x ${validation.trialCount || "-"} trials | time split ${timeRange}`;
+
+      const timeByGenre = new Map((timeValidation.genreBreakdown || []).map(row => [row.genre, row]));
+      let genreRows = (validation.genreBreakdown || [])
+        .filter(row => row.rows >= 50)
+        .map(row => ({ ...row, time: timeByGenre.get(row.genre) || {} }));
+      if (state.genre !== ALL_GENRES) {
+        const selected = validation.genreBreakdown?.find(row => row.genre === state.genre);
+        genreRows = selected ? [{ ...selected, time: timeByGenre.get(state.genre) || {} }] : [];
+      } else {
+        genreRows = genreRows.slice().sort((a, b) => (b.wmape || 0) - (a.wmape || 0)).slice(0, 12);
+      }
+
+      const header = `
+        <thead>
+          <tr>
+            <th>Genre</th>
+            <th>Rows</th>
+            <th>Hidden WMAPE</th>
+            <th>Median APE</th>
+            <th>Within 25%</th>
+            <th>Time WMAPE</th>
+          </tr>
+        </thead>
+      `;
+      const body = genreRows.length
+        ? genreRows.map(row => `
+          <tr>
+            <td>${escapeHtml(genreName(row.genre))}</td>
+            <td>${number(row.rows)}</td>
+            <td>${pctMetric(row.wmape)}</td>
+            <td>${pctMetric(row.medianAbsPctError)}</td>
+            <td>${pctMetric(row.within25Pct)}</td>
+            <td>${pctMetric(row.time?.wmape)}</td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="6">No genre-level validation rows for this selection.</td></tr>`;
+      el("genreMetricsTable").innerHTML = `${header}<tbody>${body}</tbody>`;
+    }
+
     function setupCanvas(canvas) {
       const rect = canvas.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
@@ -1483,6 +1598,7 @@
       const superSaleWindows = superSaleWindowsForRange(range.start, range.end);
       renderSummary(rows);
       renderSuperSaleFocus(rows, superSaleWindows);
+      renderModelValidation();
       drawLineChart("totalChart", chartRows, {
         events: superSaleWindows,
         eventGranularity: state.granularity,
