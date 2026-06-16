@@ -697,6 +697,7 @@
       event: "#d88722",
       eventSoft: "rgba(216, 135, 34, 0.18)",
       interval: "#344054",
+      selected: "#b15fd4",
       ink: "#1f2933",
       muted: "#667085",
       line: "#d9e0e7",
@@ -1078,6 +1079,15 @@
       });
     }
 
+    function rankOneAxisMax(rows) {
+      const rankOneWeight = rankWeights().find(row => String(row.rank) === "1")?.weight || 0;
+      const values = withChartFields(rows).map(row => {
+        const final = row.final * rankOneWeight;
+        return validationBand(final).hi95;
+      });
+      return niceMax((Math.max(...values, 1)) * 1.08);
+    }
+
     function renderSummary(rows) {
       const summary = summarize(rows);
       const coveragePct = summary.total ? summary.known * 100 / summary.total : 0;
@@ -1263,7 +1273,7 @@
       const xMin = Math.min(...points.map(row => row.ms));
       const xMax = Math.max(...points.map(row => row.ms));
       const xSpan = Math.max(1, xMax - xMin);
-      const yMax = niceMax(Math.max(...points.flatMap(row => [row.final, row.hi95])) * 1.08);
+      const yMax = options.yMax || niceMax(Math.max(...points.flatMap(row => [row.final, row.hi95])) * 1.08);
       const x = ms => dims.left + ((ms - xMin) / xSpan) * dims.plotW;
       const y = value => dims.bottom - (Math.max(0, value) / yMax) * dims.plotH;
       const hits = points.map((row, index) => ({ index, cx: x(row.ms), cy: y(row.final), data: row }));
@@ -1391,21 +1401,22 @@
         const center = dims.left + band * index + band / 2;
         const barX = center - barW / 2;
         const barY = y(row.final);
-        ctx.fillStyle = colors.final;
+        const isSelected = String(row.rank) === String(state.rank);
+        ctx.fillStyle = isSelected ? colors.selected : colors.final;
         ctx.fillRect(barX, barY, barW, Math.max(1, dims.bottom - barY));
         ctx.strokeStyle = colors.interval;
         ctx.beginPath();
         ctx.moveTo(center, y(row.hi95));
         ctx.lineTo(center, y(row.lo95));
         ctx.stroke();
-        if (index === hoverIndex) {
-          ctx.strokeStyle = colors.ink;
-          ctx.lineWidth = 2;
+        if (isSelected || index === hoverIndex) {
+          ctx.strokeStyle = isSelected ? colors.selected : colors.ink;
+          ctx.lineWidth = isSelected ? 2.5 : 2;
           ctx.strokeRect(barX - 2, barY - 2, barW + 4, dims.bottom - barY + 4);
           ctx.lineWidth = 1;
         }
-        if (index % labelStep === 0 || index === items.length - 1) {
-          ctx.fillStyle = colors.muted;
+        if (index % labelStep === 0 || index === items.length - 1 || isSelected) {
+          ctx.fillStyle = isSelected ? colors.selected : colors.muted;
           ctx.fillText(String(row.rank), center, dims.bottom + 9);
         }
         hits.push({ index, cx: center, cy: barY, x: barX, width: barW, top: barY, bottom: dims.bottom, data: row });
@@ -1609,12 +1620,12 @@
           render();
         }
       });
-      drawLineChart("timeChart", rankLineRows);
+      drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
       drawRankChart(rankRows);
       renderTable(rows);
       el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}`;
       el("rankChartMeta").textContent = `${label} | ${rangeLabel} | scaled from model rank curve`;
-      el("timeChartMeta").textContent = `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity}`;
+      el("timeChartMeta").textContent = `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
       el("status").textContent = `${label} | WMAPE ${validation.wmape ? fmtPct.format(validation.wmape * 100) + "%" : "-"} | ${number(rows.length)} days`;
     }
