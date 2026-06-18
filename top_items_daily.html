@@ -682,12 +682,18 @@
     </section>
   </main>
 
-  <script src="top_items_daily_data.js?v=downloads-rebuild-20260611"></script>
-  <script src="projected_market_data.js?v=downloads-rebuild-20260611"></script>
-  <script src="event_impact_data.js?v=downloads-events-20260604"></script>
+  <script src="top_items_daily_data.js?v=combined-300-genres-20260618"></script>
+  <script src="projected_market_data.js?v=combined-300-genres-20260618"></script>
+  <script src="event_impact_data.js?v=combined-300-genres-20260618"></script>
   <script>
     const topData = window.TOP_ITEMS_DAILY_DATA || { genres: [], dailyTotals: [] };
     const modelData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
+    function expandRows(rows, columns) {
+      if (!columns?.length || !Array.isArray(rows?.[0])) return rows || [];
+      return rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
+    }
+    topData.dailyTotals = expandRows(topData.dailyTotals, topData.dailyTotalColumns);
+    modelData.daily = expandRows(modelData.daily, modelData.dailyColumns);
     const ALL_GENRES = "__all__";
     const colors = {
       final: "#0f7a68",
