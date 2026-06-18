@@ -797,8 +797,24 @@
       return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
     }
 
+    function salesOnlyRowsForGenre(genre) {
+      return (sourceByGenre.get(genre) || []).map(row => ({
+        date: row.date,
+        observedSales: row.sales || 0,
+        projectedMissingSales: 0,
+        projectedTotalSales: row.sales || 0,
+        rankedRows: 0,
+        observedRows: row.itemCount || 0,
+        projectedRows: 0,
+        eventTypeCount: 0,
+        salesOnly: true
+      }));
+    }
+
     function rowsForGenre(genre) {
-      return genre === ALL_GENRES ? allProjectedRows() : (projectedByGenre.get(genre) || []);
+      if (genre === ALL_GENRES) return allProjectedRows();
+      const modeledRows = projectedByGenre.get(genre) || [];
+      return modeledRows.length ? modeledRows : salesOnlyRowsForGenre(genre);
     }
 
     function sourceRowsForGenre(genre) {
@@ -1610,6 +1626,7 @@
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
       const label = genreName(state.genre);
+      const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const range = activeRange();
       const rangeLabel = range.start === range.end ? range.start : `${range.start} to ${range.end}`;
       const superSaleWindows = superSaleWindowsForRange(range.start, range.end);
@@ -1629,11 +1646,17 @@
       drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
       drawRankChart(rankRows);
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}`;
-      el("rankChartMeta").textContent = `${label} | ${rangeLabel} | scaled from model rank curve`;
-      el("timeChartMeta").textContent = `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
+      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}`;
+      el("rankChartMeta").textContent = salesOnly
+        ? `${label} | no rank model for this genre`
+        : `${label} | ${rangeLabel} | scaled from model rank curve`;
+      el("timeChartMeta").textContent = salesOnly
+        ? `${label} | rank dropdown unavailable because this genre has no ranking rows`
+        : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
-      el("status").textContent = `${label} | WMAPE ${validation.wmape ? fmtPct.format(validation.wmape * 100) + "%" : "-"} | ${number(rows.length)} days`;
+      el("status").textContent = salesOnly
+        ? `${label} | TENKI sales only | ${number(rows.length)} days`
+        : `${label} | WMAPE ${validation.wmape ? fmtPct.format(validation.wmape * 100) + "%" : "-"} | ${number(rows.length)} days`;
     }
 
     function bindControls() {
