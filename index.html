@@ -1064,7 +1064,8 @@
     }
 
     function rankWeights() {
-      const curve = (modelData.rankCurve || []).filter(row => row.rank >= 1 && row.rank <= 80);
+      const maxRank = modelData.method?.maxRank || 20;
+      const curve = (modelData.rankCurve || []).filter(row => row.rank >= 1 && row.rank <= maxRank);
       const values = curve.map(row => ({
         rank: row.rank,
         weight: Math.max(row.avgObservedSales || row.medianObservedSales || 1, 1)
@@ -1686,7 +1687,8 @@
         .map((genre, index) => `<option value="${escapeHtml(genre.genre)}">${index + 1}. ${escapeHtml(genre.name)} - ${fmtYen.format(genre.sales || 0)}</option>`)
         .join("");
       el("genreSelect").innerHTML = `<option value="${ALL_GENRES}">All Genres - ${fmtYen.format(totalSales)}</option>${options}`;
-      el("rankSelect").innerHTML = Array.from({ length: 80 }, (_, index) => index + 1).map(rank => `<option value="${rank}">${rank}</option>`).join("");
+      const maxRank = modelData.method?.maxRank || 20;
+      el("rankSelect").innerHTML = Array.from({ length: maxRank }, (_, index) => index + 1).map(rank => `<option value="${rank}">${rank}</option>`).join("");
     }
 
     function syncInputs() {
