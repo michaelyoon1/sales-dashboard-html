@@ -1743,7 +1743,8 @@
       const rankLineRows = selectedRankRows(aggregateRows);
       const label = genreName(state.genre);
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
-      const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "similar_genre_sales_fallback");
+      const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => String(row.forecastSource || "").includes("fallback"));
+      const aggregateFallback = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "aggregate_genre_anchor_fallback");
       const range = activeRange();
       const rangeLabel = range.start === range.end ? range.start : `${range.start} to ${range.end}`;
       const superSaleWindows = superSaleWindowsForRange(range.start, range.end);
@@ -1769,7 +1770,7 @@
         drawRankChart(rankRows);
       }
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
+      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | log scale | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
@@ -1779,6 +1780,8 @@
       const validation = modelData.method?.validation || {};
       el("status").textContent = salesOnly
         ? `${label} | TENKI sales only | ${number(rows.length)} days`
+        : aggregateFallback
+        ? `${label} | aggregate genre forecast | ${number(rows.length)} days`
         : fallbackForecast
         ? `${label} | similar-genre forecast | ${number(rows.length)} days`
         : `${label} | WMAPE ${validation.wmape ? fmtPct.format(validation.wmape * 100) + "%" : "-"} | ${number(rows.length)} days`;
