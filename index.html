@@ -1729,18 +1729,6 @@
       const summary = summarize(rows);
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
-      const knownLineRows = withChartFields(aggregateRows).map(row => {
-        const final = row.known || 0;
-        const band = validationBand(final);
-        return {
-          date: row.date,
-          final,
-          known: row.known || 0,
-          imputed: 0,
-          lo95: band.lo95,
-          hi95: band.hi95
-        };
-      });
       const label = genreName(state.genre);
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "similar_genre_sales_fallback");
@@ -1762,8 +1750,8 @@
         }
       });
       if (salesOnly || fallbackForecast) {
-        drawCategoryBarChart("rankChart", yearlyRows(rows));
-        drawLineChart("timeChart", knownLineRows, { yScale: fallbackForecast ? "log" : "linear" });
+        drawRankChart(rankRows);
+        drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast ? "log" : "linear" });
       } else {
         drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
         drawRankChart(rankRows);
@@ -1771,10 +1759,10 @@
       renderTable(rows);
       el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = salesOnly || fallbackForecast
-        ? `${label} | yearly total market estimate from TENKI plus fallback`
+        ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
       el("timeChartMeta").textContent = salesOnly || fallbackForecast
-        ? `${label} | known TENKI sales trend${fallbackForecast ? " | log scale" : ""}`
+        ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
       el("status").textContent = salesOnly
