@@ -1161,6 +1161,15 @@
       return Number.isFinite(numberValue) ? `${fmtPct.format(numberValue * 100)}%` : "-";
     }
 
+    function reliableMetric(metric) {
+      return metric && (metric.rows || 0) >= 50;
+    }
+
+    function sampledPctMetric(metric, key) {
+      if (!metric) return "-";
+      return reliableMetric(metric) ? pctMetric(metric[key]) : "Low sample";
+    }
+
     function metricForGenre(metrics, genre) {
       if (!metrics?.genreBreakdown?.length || genre === ALL_GENRES) return null;
       return metrics.genreBreakdown.find(row => row.genre === genre) || null;
@@ -1206,10 +1215,10 @@
       const timeGenre = metricForGenre(timeValidation, state.genre);
       const selectedLabel = state.genre === ALL_GENRES ? "All genres" : genreName(state.genre);
       const cardRows = [
-        ["Hidden 5% WMAPE", pctMetric(hiddenGenre?.wmape ?? validation.wmape)],
-        ["Hidden Median APE", pctMetric(hiddenGenre?.medianAbsPctError ?? validation.medianAbsPctError)],
-        ["Time Split WMAPE", pctMetric(timeGenre?.wmape ?? timeValidation.wmape)],
-        ["Within 25%", pctMetric(hiddenGenre?.within25Pct ?? validation.within25Pct)]
+        ["Hidden 5% WMAPE", hiddenGenre ? sampledPctMetric(hiddenGenre, "wmape") : pctMetric(validation.wmape)],
+        ["Hidden Median APE", hiddenGenre ? sampledPctMetric(hiddenGenre, "medianAbsPctError") : pctMetric(validation.medianAbsPctError)],
+        ["Time Split WMAPE", timeGenre ? sampledPctMetric(timeGenre, "wmape") : pctMetric(timeValidation.wmape)],
+        ["Within 25%", hiddenGenre ? sampledPctMetric(hiddenGenre, "within25Pct") : pctMetric(validation.within25Pct)]
       ];
       el("modelMetricCards").innerHTML = cardRows.map(([label, value]) => `
         <div class="metric-card">
@@ -1220,7 +1229,8 @@
       const timeRange = timeValidation.testStart && timeValidation.testEnd
         ? `${timeValidation.testStart} to ${timeValidation.testEnd}`
         : "recent holdout";
-      el("validationMeta").textContent = `${selectedLabel} | hidden ${validation.hiddenPct || 5}% x ${validation.trialCount || "-"} trials | time split ${timeRange}`;
+      const sampleNote = hiddenGenre && !reliableMetric(hiddenGenre) ? ` | only ${number(hiddenGenre.rows)} hidden rows; genre metric is unstable` : "";
+      el("validationMeta").textContent = `${selectedLabel} | hidden ${validation.hiddenPct || 5}% x ${validation.trialCount || "-"} trials | time split ${timeRange}${sampleNote}`;
 
       const timeByGenre = new Map((timeValidation.genreBreakdown || []).map(row => [row.genre, row]));
       let genreRows = (validation.genreBreakdown || [])
@@ -1250,10 +1260,10 @@
           <tr>
             <td>${escapeHtml(genreName(row.genre))}</td>
             <td>${number(row.rows)}</td>
-            <td>${pctMetric(row.wmape)}</td>
-            <td>${pctMetric(row.medianAbsPctError)}</td>
-            <td>${pctMetric(row.within25Pct)}</td>
-            <td>${pctMetric(row.time?.wmape)}</td>
+            <td>${sampledPctMetric(row, "wmape")}</td>
+            <td>${sampledPctMetric(row, "medianAbsPctError")}</td>
+            <td>${sampledPctMetric(row, "within25Pct")}</td>
+            <td>${row.time ? sampledPctMetric(row.time, "wmape") : "-"}</td>
           </tr>
         `).join("")
         : `<tr><td colspan="6">No genre-level validation rows for this selection.</td></tr>`;
