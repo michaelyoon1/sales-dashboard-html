@@ -1627,6 +1627,7 @@
       const rankLineRows = selectedRankRows(aggregateRows);
       const label = genreName(state.genre);
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
+      const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "similar_genre_sales_fallback");
       const range = activeRange();
       const rangeLabel = range.start === range.end ? range.start : `${range.start} to ${range.end}`;
       const superSaleWindows = superSaleWindowsForRange(range.start, range.end);
@@ -1643,19 +1644,26 @@
           render();
         }
       });
-      drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
-      drawRankChart(rankRows);
+      if (salesOnly || fallbackForecast) {
+        drawEmpty("timeChart", "No rank rows for this genre");
+        drawEmpty("rankChart", "No ranking data for this genre");
+      } else {
+        drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
+        drawRankChart(rankRows);
+      }
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}`;
-      el("rankChartMeta").textContent = salesOnly
+      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${fallbackForecast ? " | similar-genre forecast; no ranking rows found" : ""}`;
+      el("rankChartMeta").textContent = salesOnly || fallbackForecast
         ? `${label} | no rank model for this genre`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
-      el("timeChartMeta").textContent = salesOnly
+      el("timeChartMeta").textContent = salesOnly || fallbackForecast
         ? `${label} | rank dropdown unavailable because this genre has no ranking rows`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
       el("status").textContent = salesOnly
         ? `${label} | TENKI sales only | ${number(rows.length)} days`
+        : fallbackForecast
+        ? `${label} | similar-genre forecast | ${number(rows.length)} days`
         : `${label} | WMAPE ${validation.wmape ? fmtPct.format(validation.wmape * 100) + "%" : "-"} | ${number(rows.length)} days`;
     }
 
