@@ -1168,6 +1168,39 @@
     function renderModelValidation() {
       const validation = modelData.method?.validation || {};
       const timeValidation = validation.timeValidation || {};
+      const fallbackInfo = modelData.method?.salesOnlyFallback?.genres?.[state.genre];
+      if (fallbackInfo) {
+        el("modelMetricCards").innerHTML = [
+          ["Fallback Type", "Similar genre"],
+          ["Market Multiplier", `${number(fallbackInfo.multiplier, 2)}x`],
+          ["Similar Genres", number(fallbackInfo.neighbors?.length || 0)],
+          ["Rank Rows", "0"]
+        ].map(([label, value]) => `
+          <div class="metric-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </div>
+        `).join("");
+        el("validationMeta").textContent = `${genreName(state.genre)} | no ranking rows found | fallback uses similar ranked genres`;
+        const header = `
+          <thead>
+            <tr>
+              <th>Similar Genre</th>
+              <th>Distance</th>
+              <th>Market Multiplier</th>
+            </tr>
+          </thead>
+        `;
+        const body = (fallbackInfo.neighbors || []).map(row => `
+          <tr>
+            <td>${escapeHtml(genreName(row.genre))}</td>
+            <td>${number(row.distance, 4)}</td>
+            <td>${number(row.marketMultiplier, 2)}x</td>
+          </tr>
+        `).join("");
+        el("genreMetricsTable").innerHTML = `${header}<tbody>${body}</tbody>`;
+        return;
+      }
       const hiddenGenre = metricForGenre(validation, state.genre);
       const timeGenre = metricForGenre(timeValidation, state.genre);
       const selectedLabel = state.genre === ALL_GENRES ? "All genres" : genreName(state.genre);
@@ -1260,7 +1293,7 @@
       chartState.delete(canvasId);
     }
 
-    function drawYAxis(ctx, dims, yMax) {
+    function drawYAxis(ctx, dims, yMax, yScale = "linear") {
       ctx.strokeStyle = colors.line;
       ctx.beginPath();
       ctx.moveTo(dims.left, dims.top);
@@ -1270,8 +1303,10 @@
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       ctx.fillStyle = colors.muted;
+      const scaledMax = yScale === "log" ? Math.log1p(yMax) : yMax;
       for (let i = 0; i <= 4; i += 1) {
-        const value = (yMax / 4) * i;
+        const scaledValue = (scaledMax / 4) * i;
+        const value = yScale === "log" ? Math.expm1(scaledValue) : scaledValue;
         const y = dims.bottom - (dims.plotH * i) / 4;
         ctx.strokeStyle = i === 0 ? colors.line : colors.softLine;
         ctx.beginPath();
@@ -1296,10 +1331,16 @@
       const xMax = Math.max(...points.map(row => row.ms));
       const xSpan = Math.max(1, xMax - xMin);
       const yMax = options.yMax || niceMax(Math.max(...points.flatMap(row => [row.final, row.hi95])) * 1.08);
+      const yScale = options.yScale || "linear";
+      const scaledYMax = yScale === "log" ? Math.log1p(yMax) : yMax;
       const x = ms => dims.left + ((ms - xMin) / xSpan) * dims.plotW;
-      const y = value => dims.bottom - (Math.max(0, value) / yMax) * dims.plotH;
+      const y = value => {
+        const safeValue = Math.max(0, value);
+        const scaledValue = yScale === "log" ? Math.log1p(safeValue) : safeValue;
+        return dims.bottom - (scaledValue / Math.max(scaledYMax, 1)) * dims.plotH;
+      };
       const hits = points.map((row, index) => ({ index, cx: x(row.ms), cy: y(row.final), data: row }));
-      drawYAxis(ctx, dims, yMax);
+      drawYAxis(ctx, dims, yMax, yScale);
 
       const eventWindows = options.events || [];
       const labelEvents = eventWindows.length <= 18;
@@ -1456,11 +1497,74 @@
       });
     }
 
+    function yearlyRows(rows) {
+      const buckets = new Map();
+      for (const row of rows) {
+        const year = row.date.slice(0, 4);
+        if (!buckets.has(year)) {
+          buckets.set(year, { category: year, final: 0, known: 0, imputed: 0, rows: 0 });
+        }
+        const bucket = buckets.get(year);
+        bucket.final += row.projectedTotalSales || 0;
+        bucket.known += row.observedSales || 0;
+        bucket.imputed += row.projectedMissingSales || 0;
+        bucket.rows += 1;
+      }
+      return [...buckets.values()].sort((a, b) => a.category.localeCompare(b.category));
+    }
+
+    function drawCategoryBarChart(canvasId, items) {
+      if (!items.length) return drawEmpty(canvasId, "No rows in this selection");
+      const canvas = el(canvasId);
+      const previous = chartState.get(canvasId) || {};
+      const hoverIndex = previous.hoverIndex ?? -1;
+      const { ctx, width, height } = setupCanvas(canvas);
+      const dims = { left: 74, right: width - 18, top: 18, bottom: height - 44 };
+      dims.plotW = dims.right - dims.left;
+      dims.plotH = dims.bottom - dims.top;
+      const yMax = niceMax(Math.max(...items.map(row => row.final || 0), 1) * 1.08);
+      const y = value => dims.bottom - (Math.max(0, value) / yMax) * dims.plotH;
+      drawYAxis(ctx, dims, yMax);
+      const band = dims.plotW / Math.max(1, items.length);
+      const barW = Math.max(18, Math.min(54, band * 0.55));
+      const hits = [];
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      items.forEach((row, index) => {
+        const center = dims.left + band * index + band / 2;
+        const barX = center - barW / 2;
+        const knownTop = y(row.known || 0);
+        const finalTop = y(row.final || 0);
+        ctx.fillStyle = colors.missing;
+        ctx.fillRect(barX, finalTop, barW, Math.max(1, knownTop - finalTop));
+        ctx.fillStyle = colors.known;
+        ctx.fillRect(barX, knownTop, barW, Math.max(1, dims.bottom - knownTop));
+        if (index === hoverIndex) {
+          ctx.strokeStyle = colors.ink;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(barX - 2, finalTop - 2, barW + 4, dims.bottom - finalTop + 4);
+          ctx.lineWidth = 1;
+        }
+        ctx.fillStyle = colors.muted;
+        ctx.fillText(row.category, center, dims.bottom + 9);
+        hits.push({ index, cx: center, cy: finalTop, x: barX, width: barW, top: finalTop, bottom: dims.bottom, data: row });
+      });
+      chartState.set(canvasId, { type: "bar", hits, band, redraw: () => drawCategoryBarChart(canvasId, items) });
+    }
+
     function tooltipRow(label, value) {
       return `<div class="tooltip-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
     }
 
     function tooltipHtml(row) {
+      if ("category" in row) {
+        return [
+          `<div class="tooltip-title">${escapeHtml(row.category)}</div>`,
+          tooltipRow("Final estimate", fmtYen.format(row.final || 0)),
+          tooltipRow("Known TENKI", fmtYen.format(row.known || 0)),
+          tooltipRow("Modeled missing", fmtYen.format(row.imputed || 0))
+        ].join("");
+      }
       if ("rank" in row) {
         return [
           `<div class="tooltip-title">Rank ${escapeHtml(row.rank)}</div>`,
@@ -1625,6 +1729,18 @@
       const summary = summarize(rows);
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
+      const knownLineRows = withChartFields(aggregateRows).map(row => {
+        const final = row.known || 0;
+        const band = validationBand(final);
+        return {
+          date: row.date,
+          final,
+          known: row.known || 0,
+          imputed: 0,
+          lo95: band.lo95,
+          hi95: band.hi95
+        };
+      });
       const label = genreName(state.genre);
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "similar_genre_sales_fallback");
@@ -1635,6 +1751,7 @@
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
       drawLineChart("totalChart", chartRows, {
+        yScale: fallbackForecast ? "log" : "linear",
         events: superSaleWindows,
         eventGranularity: state.granularity,
         click: hit => {
@@ -1645,19 +1762,19 @@
         }
       });
       if (salesOnly || fallbackForecast) {
-        drawEmpty("timeChart", "No rank rows for this genre");
-        drawEmpty("rankChart", "No ranking data for this genre");
+        drawCategoryBarChart("rankChart", yearlyRows(rows));
+        drawLineChart("timeChart", knownLineRows, { yScale: fallbackForecast ? "log" : "linear" });
       } else {
         drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
         drawRankChart(rankRows);
       }
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${fallbackForecast ? " | similar-genre forecast; no ranking rows found" : ""}`;
+      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = salesOnly || fallbackForecast
-        ? `${label} | no rank model for this genre`
+        ? `${label} | yearly total market estimate from TENKI plus fallback`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
       el("timeChartMeta").textContent = salesOnly || fallbackForecast
-        ? `${label} | rank dropdown unavailable because this genre has no ranking rows`
+        ? `${label} | known TENKI sales trend${fallbackForecast ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
       el("status").textContent = salesOnly
