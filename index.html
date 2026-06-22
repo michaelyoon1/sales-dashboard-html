@@ -1752,7 +1752,7 @@
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
       drawLineChart("totalChart", chartRows, {
-        yScale: fallbackForecast ? "log" : "linear",
+        yScale: fallbackForecast && !aggregateFallback ? "log" : "linear",
         events: superSaleWindows,
         eventGranularity: state.granularity,
         click: hit => {
@@ -1764,18 +1764,18 @@
       });
       if (salesOnly || fallbackForecast) {
         drawRankChart(rankRows);
-        drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast ? "log" : "linear" });
+        drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast && !aggregateFallback ? "log" : "linear" });
       } else {
         drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
         drawRankChart(rankRows);
       }
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | log scale | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
+      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
       el("timeChartMeta").textContent = salesOnly || fallbackForecast
-        ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast ? " | log scale" : ""}`
+        ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
       el("status").textContent = salesOnly
