@@ -1167,7 +1167,8 @@
 
     function sampledPctMetric(metric, key) {
       if (!metric) return "-";
-      return reliableMetric(metric) ? pctMetric(metric[key]) : "Low sample";
+      const value = pctMetric(metric[key]);
+      return reliableMetric(metric) ? value : `${value} low sample`;
     }
 
     function metricForGenre(metrics, genre) {
