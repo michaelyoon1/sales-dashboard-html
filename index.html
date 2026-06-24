@@ -677,7 +677,7 @@
     <section class="chart-panel" id="rankChartPanel">
       <div class="panel-header">
         <div>
-          <h2>Sales by Rank</h2>
+          <h2 id="rankChartTitle">Sales by Rank</h2>
           <div class="panel-meta" id="rankChartMeta"></div>
         </div>
         <div class="legend">
@@ -693,7 +693,7 @@
     <section class="chart-panel range-only" id="timeChartPanel">
       <div class="panel-header">
         <div>
-          <h2>Rank Over Time</h2>
+          <h2 id="timeChartTitle">Rank Over Time</h2>
           <div class="panel-meta" id="timeChartMeta"></div>
         </div>
         <div class="legend">
@@ -763,6 +763,7 @@
       view: params.get("view") || "genre",
       genre: params.get("genre") || ALL_GENRES,
       shop: params.get("shop") || "",
+      shopGenre: params.get("shopGenre") || "",
       rangePreset: params.get("range") || "all",
       granularity: params.get("granularity") || "day",
       startDate: params.get("start") || "",
@@ -827,6 +828,16 @@
 
     function shopName(shop) {
       return shop ? `Shop ${shop}` : "All Shops";
+    }
+
+    function shopGenresForShop(shop) {
+      const totals = new Map();
+      for (const row of shopGenreMonthlyByShop.get(shop) || []) {
+        totals.set(row.genre, (totals.get(row.genre) || 0) + (row.sales || 0));
+      }
+      return [...totals.entries()]
+        .map(([genre, sales]) => ({ genre, name: genreName(genre), sales }))
+        .sort((a, b) => b.sales - a.sales);
     }
 
     function shopRowsForShop(shop) {
@@ -924,6 +935,8 @@
       if (!["genre", "shop"].includes(state.view)) state.view = "genre";
       if (!topData.genres.some(row => row.genre === state.genre) && state.genre !== ALL_GENRES) state.genre = ALL_GENRES;
       if (!shopData.shops.some(row => row.shop === state.shop)) state.shop = shopData.shops[0]?.shop || "";
+      const shopGenres = shopGenresForShop(state.shop);
+      if (!shopGenres.some(row => row.genre === state.shopGenre)) state.shopGenre = shopGenres[0]?.genre || "";
       if (!["day", "week", "month"].includes(state.granularity)) state.granularity = "day";
       if (!["today", "7d", "4w", "6m", "12m", "mtd", "qtd", "ytd", "all", "custom"].includes(state.rangePreset)) {
         state.rangePreset = "all";
@@ -1673,6 +1686,7 @@
         click: hit => {
           if (!hit.data.rank) return;
           state.rank = String(hit.data.rank);
+          if (state.view === "shop" && hit.data.genre) state.shopGenre = hit.data.genre;
           syncInputs();
           render();
         }
@@ -1842,12 +1856,11 @@
     }
 
     function selectedShopGenreLineRows() {
-      const rankedGenres = shopGenreRankRows(20);
-      const selected = rankedGenres[Math.max(0, Number(state.rank || 1) - 1)];
-      if (!selected) return [];
+      const selectedGenre = state.shopGenre || shopGenresForShop(state.shop)[0]?.genre || "";
+      if (!selectedGenre) return [];
       const { startMonth, endMonth } = monthRangeForActiveRange();
       return (shopGenreMonthlyByShop.get(state.shop) || [])
-        .filter(row => row.genre === selected.genre)
+        .filter(row => row.genre === selectedGenre)
         .filter(row => (!startMonth || row.month >= startMonth) && (!endMonth || row.month <= endMonth))
         .map(row => {
           const final = row.sales || 0;
@@ -1859,18 +1872,33 @@
             imputed: 0,
             lo95: band.lo95,
             hi95: band.hi95,
-            genre: selected.genre
+            genre: selectedGenre
           };
         })
         .sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    function populateControls() {
+    function populateShopGenreOptions() {
+      const shopGenres = shopGenresForShop(state.shop);
+      const options = shopGenres
+        .map((genre, index) => `<option value="${escapeHtml(genre.genre)}">${index + 1}. ${escapeHtml(genre.name)} - ${fmtYen.format(genre.sales || 0)}</option>`)
+        .join("");
+      el("genreSelect").innerHTML = options || `<option value="">No genres for this shop</option>`;
+      if (!shopGenres.some(row => row.genre === state.shopGenre)) {
+        state.shopGenre = shopGenres[0]?.genre || "";
+      }
+    }
+
+    function populateGenreOptions() {
       const totalSales = topData.genres.reduce((sum, genre) => sum + (genre.sales || 0), 0);
       const options = topData.genres
         .map((genre, index) => `<option value="${escapeHtml(genre.genre)}">${index + 1}. ${escapeHtml(genre.name)} - ${fmtYen.format(genre.sales || 0)}</option>`)
         .join("");
       el("genreSelect").innerHTML = `<option value="${ALL_GENRES}">All Genres - ${fmtYen.format(totalSales)}</option>${options}`;
+    }
+
+    function populateControls() {
+      populateGenreOptions();
       el("shopSelect").innerHTML = (shopData.shops || [])
         .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
         .join("");
@@ -1879,12 +1907,17 @@
     }
 
     function syncInputs() {
+      if (state.view === "shop") {
+        populateShopGenreOptions();
+      } else {
+        populateGenreOptions();
+      }
       el("genreViewButton").classList.toggle("active", state.view === "genre");
       el("shopViewButton").classList.toggle("active", state.view === "shop");
-      el("genreField").hidden = state.view !== "genre";
       el("shopField").hidden = state.view !== "shop";
+      el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre in shop" : "Genre";
       el("rankControlLabel").textContent = state.view === "shop" ? "Top genre" : "Rank";
-      el("genreSelect").value = state.genre;
+      el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
       el("rangePresetSelect").value = state.rangePreset;
       el("granularitySelect").value = state.granularity;
@@ -1903,6 +1936,7 @@
       if (state.view !== "genre") params.set("view", state.view);
       if (state.view === "genre" && state.genre !== ALL_GENRES) params.set("genre", state.genre);
       if (state.view === "shop" && state.shop) params.set("shop", state.shop);
+      if (state.view === "shop" && state.shopGenre) params.set("shopGenre", state.shopGenre);
       if (state.rangePreset !== "all") params.set("range", state.rangePreset);
       if (state.granularity !== "day") params.set("granularity", state.granularity);
       if (state.rangePreset === "custom") {
@@ -1936,6 +1970,8 @@
       renderSummary(rows);
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
+      el("rankChartTitle").textContent = state.view === "shop" ? "Genres Sold by This Shop" : "Sales by Rank";
+      el("timeChartTitle").textContent = state.view === "shop" ? "Selected Genre in This Shop" : "Rank Over Time";
       drawLineChart("totalChart", chartRows, {
         yScale: state.view === "genre" && fallbackForecast && !aggregateFallback ? "log" : "linear",
         events: superSaleWindows,
@@ -1968,9 +2004,9 @@
         : salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
-      const selectedShopGenre = state.view === "shop" ? shopGenreRankRows(20)[Math.max(0, Number(state.rank || 1) - 1)] : null;
+      const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
       el("timeChartMeta").textContent = state.view === "shop"
-        ? `${label} | ${selectedShopGenre ? genreName(selectedShopGenre.genre) : "selected genre"} trend | rank ${state.rank}`
+        ? `${label} | ${selectedShopGenreName} trend in this shop`
         : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
@@ -1995,12 +2031,20 @@
         });
       }
       el("genreSelect").addEventListener("change", event => {
-        state.genre = event.target.value;
+        if (state.view === "shop") {
+          state.shopGenre = event.target.value;
+          render();
+          return;
+        } else {
+          state.genre = event.target.value;
+        }
         resetDatesForGenre();
         render();
       });
       el("shopSelect").addEventListener("change", event => {
         state.shop = event.target.value;
+        state.shopGenre = shopGenresForShop(state.shop)[0]?.genre || "";
+        state.rank = "1";
         resetDatesForGenre();
         render();
       });
@@ -2024,6 +2068,9 @@
       });
       el("rankSelect").addEventListener("change", event => {
         state.rank = event.target.value;
+        if (state.view === "shop") {
+          state.shopGenre = shopGenreRankRows(20)[Math.max(0, Number(state.rank || 1) - 1)]?.genre || state.shopGenre;
+        }
         render();
       });
       for (const canvas of document.querySelectorAll("canvas")) {
