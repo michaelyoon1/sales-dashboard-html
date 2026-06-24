@@ -631,7 +631,7 @@
       <section class="chart-panel range-only" id="totalChartPanel">
         <div class="panel-header">
           <div>
-            <h2>Total Sales</h2>
+            <h2 id="totalChartTitle">Total Sales</h2>
             <div class="panel-meta" id="totalChartMeta"></div>
           </div>
           <div class="legend">
@@ -1961,6 +1961,8 @@
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
       const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
+      const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
+      const selectedShopGenreRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => String(row.forecastSource || "").includes("fallback"));
       const aggregateFallback = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "aggregate_genre_anchor_fallback");
@@ -1970,24 +1972,37 @@
       renderSummary(rows);
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
+      el("totalChartTitle").textContent = state.view === "shop" ? "Selected Genre Sales in Shop" : "Total Sales";
       el("rankChartTitle").textContent = state.view === "shop" ? "Genres Sold by This Shop" : "Sales by Rank";
-      el("timeChartTitle").textContent = state.view === "shop" ? "Selected Genre in This Shop" : "Rank Over Time";
-      drawLineChart("totalChart", chartRows, {
-        yScale: state.view === "genre" && fallbackForecast && !aggregateFallback ? "log" : "linear",
-        events: superSaleWindows,
-        eventGranularity: state.granularity,
-        click: hit => {
-          state.rangePreset = "custom";
-          state.startDate = hit.data.date;
-          state.endDate = hit.data.date;
-          render();
-        }
-      });
+      el("timeChartTitle").textContent = state.view === "shop" ? "Full Shop Sales" : "Rank Over Time";
+      if (state.view === "shop") {
+        drawLineChart("totalChart", selectedShopGenreRows, {
+          events: superSaleWindows,
+          eventGranularity: "month",
+          click: hit => {
+            state.rangePreset = "custom";
+            state.startDate = hit.data.date;
+            state.endDate = hit.data.date;
+            render();
+          }
+        });
+      } else {
+        drawLineChart("totalChart", chartRows, {
+          yScale: fallbackForecast && !aggregateFallback ? "log" : "linear",
+          events: superSaleWindows,
+          eventGranularity: state.granularity,
+          click: hit => {
+            state.rangePreset = "custom";
+            state.startDate = hit.data.date;
+            state.endDate = hit.data.date;
+            render();
+          }
+        });
+      }
       if (state.view === "shop") {
         const genreRankRows = shopGenreRankRows(20);
-        const selectedGenreRows = selectedShopGenreLineRows();
         drawCategoryBarChart("rankChart", genreRankRows);
-        drawLineChart("timeChart", selectedGenreRows);
+        drawLineChart("timeChart", chartRows);
       } else if (salesOnly || fallbackForecast) {
         drawRankChart(rankRows);
         drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast && !aggregateFallback ? "log" : "linear" });
@@ -1997,16 +2012,15 @@
       }
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
-        ? `${label} | ${rangeLabel} | ${number(rows.length)} days | TENKI shop sales`
+        ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | monthly sales for this genre in this shop`
         : `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = state.view === "shop"
         ? `${label} | top genres by selected-period sales`
         : salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
-      const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
       el("timeChartMeta").textContent = state.view === "shop"
-        ? `${label} | ${selectedShopGenreName} trend in this shop`
+        ? `${label} | full shop sales for comparison`
         : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
