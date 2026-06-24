@@ -1642,48 +1642,13 @@
       return [...buckets.values()].sort((a, b) => a.category.localeCompare(b.category));
     }
 
-    function wrapCanvasLabel(ctx, label, maxWidth, maxLines = 2) {
-      const words = String(label || "").split(/\s+/).filter(Boolean);
-      if (!words.length) return [""];
-      const lines = [];
-      let current = "";
-      for (const word of words) {
-        const candidate = current ? `${current} ${word}` : word;
-        if (ctx.measureText(candidate).width <= maxWidth || !current) {
-          current = candidate;
-        } else {
-          lines.push(current);
-          current = word;
-          if (lines.length === maxLines - 1) break;
-        }
-      }
-      if (current && lines.length < maxLines) lines.push(current);
-      const usedWords = lines.join(" ").split(/\s+/).filter(Boolean).length;
-      const remaining = words.slice(usedWords).join(" ");
-      if (remaining && lines.length) {
-        let last = `${lines[lines.length - 1]} ${remaining}`.trim();
-        while (last.length > 1 && ctx.measureText(`${last}...`).width > maxWidth) {
-          last = last.slice(0, -1).trim();
-        }
-        lines[lines.length - 1] = `${last}...`;
-      }
-      return lines.map(line => {
-        if (ctx.measureText(line).width <= maxWidth) return line;
-        let clipped = line;
-        while (clipped.length > 1 && ctx.measureText(`${clipped}...`).width > maxWidth) {
-          clipped = clipped.slice(0, -1).trim();
-        }
-        return `${clipped}...`;
-      });
-    }
-
     function drawCategoryBarChart(canvasId, items) {
       if (!items.length) return drawEmpty(canvasId, "No rows in this selection");
       const canvas = el(canvasId);
       const previous = chartState.get(canvasId) || {};
       const hoverIndex = previous.hoverIndex ?? -1;
       const { ctx, width, height } = setupCanvas(canvas);
-      const dims = { left: 74, right: width - 18, top: 18, bottom: height - 68 };
+      const dims = { left: 74, right: width - 18, top: 18, bottom: height - 32 };
       dims.plotW = dims.right - dims.left;
       dims.plotH = dims.bottom - dims.top;
       const yMax = niceMax(Math.max(...items.map(row => row.final || 0), 1) * 1.08);
@@ -1692,9 +1657,6 @@
       const band = dims.plotW / Math.max(1, items.length);
       const barW = Math.max(18, Math.min(54, band * 0.55));
       const hits = [];
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.font = "11px Arial, Helvetica, sans-serif";
       items.forEach((row, index) => {
         const center = dims.left + band * index + band / 2;
         const barX = center - barW / 2;
@@ -1710,11 +1672,6 @@
           ctx.strokeRect(barX - 2, finalTop - 2, barW + 4, dims.bottom - finalTop + 4);
           ctx.lineWidth = 1;
         }
-        ctx.fillStyle = colors.muted;
-        const labelLines = wrapCanvasLabel(ctx, row.category, Math.max(42, band - 6), 2);
-        labelLines.forEach((line, lineIndex) => {
-          ctx.fillText(line, center, dims.bottom + 9 + lineIndex * 13);
-        });
         hits.push({ index, cx: center, cy: finalTop, x: barX, width: barW, top: finalTop, bottom: dims.bottom, data: row });
       });
       chartState.set(canvasId, {
