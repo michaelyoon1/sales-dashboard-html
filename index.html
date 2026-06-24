@@ -132,6 +132,32 @@
       min-width: 0;
     }
 
+    .view-tabs {
+      display: inline-flex;
+      align-self: end;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-soft);
+    }
+
+    .view-tab {
+      min-height: 32px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .view-tab.active {
+      background: var(--final);
+      color: #fff;
+    }
+
     .pill-control {
       display: inline-flex;
       align-items: center;
@@ -510,6 +536,7 @@
 
       .toolbar,
       .pill-control,
+      .view-tabs,
       .date-fields {
         width: 100%;
       }
@@ -549,9 +576,19 @@
 
   <main>
     <section class="controls" aria-label="Prediction result filters">
-      <label class="field genre-field">
+      <div class="view-tabs" role="tablist" aria-label="Dashboard view">
+        <button class="view-tab active" id="genreViewButton" type="button" data-view="genre">By genre</button>
+        <button class="view-tab" id="shopViewButton" type="button" data-view="shop">By shop</button>
+      </div>
+
+      <label class="field genre-field" id="genreField">
         <span>Genre</span>
         <select id="genreSelect"></select>
+      </label>
+
+      <label class="field genre-field" id="shopField" hidden>
+        <span>Shop</span>
+        <select id="shopSelect"></select>
       </label>
 
       <div class="toolbar">
@@ -578,7 +615,7 @@
           </select>
         </span>
         <span class="pill-control">
-          Rank
+          <span id="rankControlLabel">Rank</span>
           <select id="rankSelect"></select>
         </span>
         <span class="date-fields" aria-label="Custom date range">
@@ -684,16 +721,21 @@
 
   <script src="top_items_daily_data.js?v=combined-300-genres-20260618"></script>
   <script src="projected_market_data.js?v=combined-300-genres-20260618"></script>
+  <script src="shop_view_data.js?v=shop-mode-20260624"></script>
   <script src="event_impact_data.js?v=combined-300-genres-20260618"></script>
   <script>
     const topData = window.TOP_ITEMS_DAILY_DATA || { genres: [], dailyTotals: [] };
     const modelData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
+    const shopData = window.SHOP_VIEW_DATA || { shops: [], daily: [], genreMonthly: [] };
     function expandRows(rows, columns) {
       if (!columns?.length || !Array.isArray(rows?.[0])) return rows || [];
       return rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
     }
     topData.dailyTotals = expandRows(topData.dailyTotals, topData.dailyTotalColumns);
     modelData.daily = expandRows(modelData.daily, modelData.dailyColumns);
+    shopData.shops = expandRows(shopData.shops, shopData.shopColumns);
+    shopData.daily = expandRows(shopData.daily, shopData.dailyColumns);
+    shopData.genreMonthly = expandRows(shopData.genreMonthly, shopData.genreMonthlyColumns);
     const ALL_GENRES = "__all__";
     const colors = {
       final: "#0f7a68",
@@ -718,7 +760,9 @@
     const chartState = new Map();
     const params = new URLSearchParams(location.search);
     const state = {
+      view: params.get("view") || "genre",
       genre: params.get("genre") || ALL_GENRES,
+      shop: params.get("shop") || "",
       rangePreset: params.get("range") || "all",
       granularity: params.get("granularity") || "day",
       startDate: params.get("start") || "",
@@ -728,6 +772,8 @@
 
     const projectedByGenre = new Map();
     const sourceByGenre = new Map();
+    const shopDailyByShop = new Map();
+    const shopGenreMonthlyByShop = new Map();
 
     for (const row of modelData.daily || []) {
       if (!projectedByGenre.has(row.genre)) projectedByGenre.set(row.genre, []);
@@ -738,6 +784,15 @@
     for (const row of topData.dailyTotals || []) {
       if (!sourceByGenre.has(row.genre)) sourceByGenre.set(row.genre, []);
       sourceByGenre.get(row.genre).push(row);
+    }
+    for (const row of shopData.daily || []) {
+      if (!shopDailyByShop.has(row.shop)) shopDailyByShop.set(row.shop, []);
+      shopDailyByShop.get(row.shop).push(row);
+    }
+    for (const rows of shopDailyByShop.values()) rows.sort((a, b) => a.date.localeCompare(b.date));
+    for (const row of shopData.genreMonthly || []) {
+      if (!shopGenreMonthlyByShop.has(row.shop)) shopGenreMonthlyByShop.set(row.shop, []);
+      shopGenreMonthlyByShop.get(row.shop).push(row);
     }
 
     function el(id) {
@@ -767,7 +822,37 @@
 
     function genreName(genre) {
       if (genre === ALL_GENRES) return "All Genres";
-      return topData.genres.find(row => row.genre === genre)?.name || `Genre ${genre}`;
+      return topData.genres.find(row => row.genre === genre)?.name || shopData.genreNames?.[genre] || `Genre ${genre}`;
+    }
+
+    function shopName(shop) {
+      return shop ? `Shop ${shop}` : "All Shops";
+    }
+
+    function shopRowsForShop(shop) {
+      return (shopDailyByShop.get(shop) || []).map(row => ({
+        date: row.date,
+        observedSales: row.sales || 0,
+        projectedMissingSales: 0,
+        projectedTotalSales: row.sales || 0,
+        rankedRows: row.genreCount || 0,
+        observedRows: row.genreCount || 0,
+        projectedRows: 0,
+        eventTypeCount: 0,
+        shopMode: true,
+        items: row.items || 0,
+        pv: row.pv || 0
+      }));
+    }
+
+    function rowsForSelection() {
+      return state.view === "shop" ? shopRowsForShop(state.shop) : rowsForGenre(state.genre);
+    }
+
+    function dateRangeForSelection() {
+      const rows = rowsForSelection();
+      if (!rows.length) return { start: "", end: "" };
+      return { start: rows[0].date, end: rows[rows.length - 1].date };
     }
 
     function allProjectedRows() {
@@ -836,7 +921,9 @@
     }
 
     function setDefaults() {
+      if (!["genre", "shop"].includes(state.view)) state.view = "genre";
       if (!topData.genres.some(row => row.genre === state.genre) && state.genre !== ALL_GENRES) state.genre = ALL_GENRES;
+      if (!shopData.shops.some(row => row.shop === state.shop)) state.shop = shopData.shops[0]?.shop || "";
       if (!["day", "week", "month"].includes(state.granularity)) state.granularity = "day";
       if (!["today", "7d", "4w", "6m", "12m", "mtd", "qtd", "ytd", "all", "custom"].includes(state.rangePreset)) {
         state.rangePreset = "all";
@@ -857,7 +944,7 @@
 
     function filteredRows() {
       const { start, end } = activeRange();
-      return rowsForGenre(state.genre).filter(row => (!start || row.date >= start) && (!end || row.date <= end));
+      return rowsForSelection().filter(row => (!start || row.date >= start) && (!end || row.date <= end));
     }
 
     function summarize(rows) {
@@ -914,7 +1001,7 @@
     }
 
     function setRangeFromPreset(preset) {
-      const range = dateRangeForGenre(state.genre);
+      const range = dateRangeForSelection();
       const end = range.end;
       let start = range.start;
       if (!end) {
@@ -1177,6 +1264,23 @@
     }
 
     function renderModelValidation() {
+      if (state.view === "shop") {
+        const shop = shopData.shops.find(row => row.shop === state.shop) || {};
+        el("modelMetricCards").innerHTML = [
+          ["Shop Sales", fmtYen.format(shop.sales || 0)],
+          ["Genres Sold", number(shop.genreCount || 0)],
+          ["Active Days", number(shop.activeDays || 0)],
+          ["Source", "TENKI sales"]
+        ].map(([label, value]) => `
+          <div class="metric-card">
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </div>
+        `).join("");
+        el("validationMeta").textContent = `${shopName(state.shop)} | shop view ranks genres by TENKI sales in the selected period`;
+        el("genreMetricsTable").innerHTML = `<tbody><tr><td>Shop mode uses observed TENKI shop sales directly. The genre ranking below updates from monthly shop-genre totals for the selected date range.</td></tr></tbody>`;
+        return;
+      }
       const validation = modelData.method?.validation || {};
       const timeValidation = validation.timeValidation || {};
       const fallbackInfo = modelData.method?.salesOnlyFallback?.genres?.[state.genre];
@@ -1561,7 +1665,18 @@
         ctx.fillText(row.category, center, dims.bottom + 9);
         hits.push({ index, cx: center, cy: finalTop, x: barX, width: barW, top: finalTop, bottom: dims.bottom, data: row });
       });
-      chartState.set(canvasId, { type: "bar", hits, band, redraw: () => drawCategoryBarChart(canvasId, items) });
+      chartState.set(canvasId, {
+        type: "bar",
+        hits,
+        band,
+        redraw: () => drawCategoryBarChart(canvasId, items),
+        click: hit => {
+          if (!hit.data.rank) return;
+          state.rank = String(hit.data.rank);
+          syncInputs();
+          render();
+        }
+      });
     }
 
     function tooltipRow(label, value) {
@@ -1675,7 +1790,12 @@
         el("rowsTable").innerHTML = `<tbody><tr><td><div class="empty-state">No days in this selection</div></td></tr></tbody>`;
         return;
       }
-      const columns = [
+      const columns = state.view === "shop" ? [
+        ["date", "Date"],
+        ["final", "Shop Sales", fmtYen.format],
+        ["known", "TENKI Sales", fmtYen.format],
+        ["rankedRows", "Genres Sold", number]
+      ] : [
         ["date", "Date"],
         ["final", "Final Estimate", fmtYen.format],
         ["known", "Known TENKI", fmtYen.format],
@@ -1692,24 +1812,86 @@
       el("rowsTable").innerHTML = `${head}<tbody>${body}</tbody>`;
     }
 
+    function monthRangeForActiveRange() {
+      const { start, end } = activeRange();
+      return {
+        startMonth: start ? `${start.slice(0, 7)}-01` : "",
+        endMonth: end ? `${end.slice(0, 7)}-01` : ""
+      };
+    }
+
+    function shopGenreRankRows(limit = 20) {
+      const { startMonth, endMonth } = monthRangeForActiveRange();
+      const buckets = new Map();
+      for (const row of shopGenreMonthlyByShop.get(state.shop) || []) {
+        if (startMonth && row.month < startMonth) continue;
+        if (endMonth && row.month > endMonth) continue;
+        if (!buckets.has(row.genre)) {
+          buckets.set(row.genre, { genre: row.genre, category: genreName(row.genre), final: 0, known: 0, imputed: 0, rows: 0 });
+        }
+        const bucket = buckets.get(row.genre);
+        bucket.final += row.sales || 0;
+        bucket.known += row.sales || 0;
+        bucket.rows += 1;
+      }
+      return [...buckets.values()]
+        .filter(row => row.final > 0)
+        .sort((a, b) => b.final - a.final)
+        .slice(0, limit)
+        .map((row, index) => ({ ...row, rank: index + 1 }));
+    }
+
+    function selectedShopGenreLineRows() {
+      const rankedGenres = shopGenreRankRows(20);
+      const selected = rankedGenres[Math.max(0, Number(state.rank || 1) - 1)];
+      if (!selected) return [];
+      const { startMonth, endMonth } = monthRangeForActiveRange();
+      return (shopGenreMonthlyByShop.get(state.shop) || [])
+        .filter(row => row.genre === selected.genre)
+        .filter(row => (!startMonth || row.month >= startMonth) && (!endMonth || row.month <= endMonth))
+        .map(row => {
+          const final = row.sales || 0;
+          const band = validationBand(final);
+          return {
+            date: row.month,
+            final,
+            known: final,
+            imputed: 0,
+            lo95: band.lo95,
+            hi95: band.hi95,
+            genre: selected.genre
+          };
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
     function populateControls() {
       const totalSales = topData.genres.reduce((sum, genre) => sum + (genre.sales || 0), 0);
       const options = topData.genres
         .map((genre, index) => `<option value="${escapeHtml(genre.genre)}">${index + 1}. ${escapeHtml(genre.name)} - ${fmtYen.format(genre.sales || 0)}</option>`)
         .join("");
       el("genreSelect").innerHTML = `<option value="${ALL_GENRES}">All Genres - ${fmtYen.format(totalSales)}</option>${options}`;
+      el("shopSelect").innerHTML = (shopData.shops || [])
+        .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
+        .join("");
       const maxRank = modelData.method?.maxRank || 20;
       el("rankSelect").innerHTML = Array.from({ length: maxRank }, (_, index) => index + 1).map(rank => `<option value="${rank}">${rank}</option>`).join("");
     }
 
     function syncInputs() {
+      el("genreViewButton").classList.toggle("active", state.view === "genre");
+      el("shopViewButton").classList.toggle("active", state.view === "shop");
+      el("genreField").hidden = state.view !== "genre";
+      el("shopField").hidden = state.view !== "shop";
+      el("rankControlLabel").textContent = state.view === "shop" ? "Top genre" : "Rank";
       el("genreSelect").value = state.genre;
+      el("shopSelect").value = state.shop;
       el("rangePresetSelect").value = state.rangePreset;
       el("granularitySelect").value = state.granularity;
       el("startDateInput").value = state.startDate;
       el("endDateInput").value = state.endDate;
       el("rankSelect").value = state.rank;
-      const range = dateRangeForGenre(state.genre);
+      const range = dateRangeForSelection();
       for (const id of ["startDateInput", "endDateInput"]) {
         el(id).min = range.start;
         el(id).max = range.end;
@@ -1718,7 +1900,9 @@
 
     function updateUrl() {
       const params = new URLSearchParams();
-      if (state.genre !== ALL_GENRES) params.set("genre", state.genre);
+      if (state.view !== "genre") params.set("view", state.view);
+      if (state.view === "genre" && state.genre !== ALL_GENRES) params.set("genre", state.genre);
+      if (state.view === "shop" && state.shop) params.set("shop", state.shop);
       if (state.rangePreset !== "all") params.set("range", state.rangePreset);
       if (state.granularity !== "day") params.set("granularity", state.granularity);
       if (state.rangePreset === "custom") {
@@ -1742,7 +1926,7 @@
       const summary = summarize(rows);
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
-      const label = genreName(state.genre);
+      const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => String(row.forecastSource || "").includes("fallback"));
       const aggregateFallback = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "aggregate_genre_anchor_fallback");
@@ -1753,7 +1937,7 @@
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
       drawLineChart("totalChart", chartRows, {
-        yScale: fallbackForecast && !aggregateFallback ? "log" : "linear",
+        yScale: state.view === "genre" && fallbackForecast && !aggregateFallback ? "log" : "linear",
         events: superSaleWindows,
         eventGranularity: state.granularity,
         click: hit => {
@@ -1763,7 +1947,12 @@
           render();
         }
       });
-      if (salesOnly || fallbackForecast) {
+      if (state.view === "shop") {
+        const genreRankRows = shopGenreRankRows(20);
+        const selectedGenreRows = selectedShopGenreLineRows();
+        drawCategoryBarChart("rankChart", genreRankRows);
+        drawLineChart("timeChart", selectedGenreRows);
+      } else if (salesOnly || fallbackForecast) {
         drawRankChart(rankRows);
         drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast && !aggregateFallback ? "log" : "linear" });
       } else {
@@ -1771,15 +1960,24 @@
         drawRankChart(rankRows);
       }
       renderTable(rows);
-      el("totalChartMeta").textContent = `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
-      el("rankChartMeta").textContent = salesOnly || fallbackForecast
+      el("totalChartMeta").textContent = state.view === "shop"
+        ? `${label} | ${rangeLabel} | ${number(rows.length)} days | TENKI shop sales`
+        : `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
+      el("rankChartMeta").textContent = state.view === "shop"
+        ? `${label} | top genres by selected-period sales`
+        : salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total`
         : `${label} | ${rangeLabel} | scaled from model rank curve`;
-      el("timeChartMeta").textContent = salesOnly || fallbackForecast
+      const selectedShopGenre = state.view === "shop" ? shopGenreRankRows(20)[Math.max(0, Number(state.rank || 1) - 1)] : null;
+      el("timeChartMeta").textContent = state.view === "shop"
+        ? `${label} | ${selectedShopGenre ? genreName(selectedShopGenre.genre) : "selected genre"} trend | rank ${state.rank}`
+        : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
       const validation = modelData.method?.validation || {};
-      el("status").textContent = salesOnly
+      el("status").textContent = state.view === "shop"
+        ? `${label} | ${fmtYen.format(summary.total)} selected sales | ${number(rows.length)} days`
+        : salesOnly
         ? `${label} | TENKI sales only | ${number(rows.length)} days`
         : aggregateFallback
         ? `${label} | aggregate genre forecast | ${number(rows.length)} days`
@@ -1789,8 +1987,20 @@
     }
 
     function bindControls() {
+      for (const button of [el("genreViewButton"), el("shopViewButton")]) {
+        button.addEventListener("click", event => {
+          state.view = event.currentTarget.dataset.view;
+          resetDatesForGenre();
+          render();
+        });
+      }
       el("genreSelect").addEventListener("change", event => {
         state.genre = event.target.value;
+        resetDatesForGenre();
+        render();
+      });
+      el("shopSelect").addEventListener("change", event => {
+        state.shop = event.target.value;
         resetDatesForGenre();
         render();
       });
