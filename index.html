@@ -733,6 +733,7 @@
     }
     topData.dailyTotals = expandRows(topData.dailyTotals, topData.dailyTotalColumns);
     modelData.daily = expandRows(modelData.daily, modelData.dailyColumns);
+    modelData.genreRankCurves = expandRows(modelData.genreRankCurves, modelData.genreRankCurveColumns);
     shopData.shops = expandRows(shopData.shops, shopData.shopColumns);
     shopData.daily = expandRows(shopData.daily, shopData.dailyColumns);
     shopData.genreMonthly = expandRows(shopData.genreMonthly, shopData.genreMonthlyColumns);
@@ -773,6 +774,7 @@
 
     const projectedByGenre = new Map();
     const sourceByGenre = new Map();
+    const rankCurveByGenre = new Map();
     const shopDailyByShop = new Map();
     const shopGenreMonthlyByShop = new Map();
 
@@ -781,6 +783,11 @@
       projectedByGenre.get(row.genre).push(row);
     }
     for (const rows of projectedByGenre.values()) rows.sort((a, b) => a.date.localeCompare(b.date));
+    for (const row of modelData.genreRankCurves || []) {
+      if (!rankCurveByGenre.has(row.genre)) rankCurveByGenre.set(row.genre, []);
+      rankCurveByGenre.get(row.genre).push(row);
+    }
+    for (const rows of rankCurveByGenre.values()) rows.sort((a, b) => Number(a.rank) - Number(b.rank));
 
     for (const row of topData.dailyTotals || []) {
       if (!sourceByGenre.has(row.genre)) sourceByGenre.set(row.genre, []);
@@ -1163,19 +1170,40 @@
       });
     }
 
-    function rankWeights() {
+    function rankWeights(genre = state.genre) {
       const maxRank = modelData.method?.maxRank || 20;
-      const curve = (modelData.rankCurve || []).filter(row => row.rank >= 1 && row.rank <= maxRank);
-      const values = curve.map(row => ({
-        rank: row.rank,
-        weight: Math.max(row.avgObservedSales || row.medianObservedSales || 1, 1)
-      }));
+      const globalByRank = new Map((modelData.rankCurve || [])
+        .filter(row => row.rank >= 1 && row.rank <= maxRank)
+        .map(row => [Number(row.rank), row]));
+      const genreByRank = new Map((genre !== ALL_GENRES ? rankCurveByGenre.get(genre) || [] : [])
+        .filter(row => row.rank >= 1 && row.rank <= maxRank)
+        .map(row => [Number(row.rank), row]));
+      const values = Array.from({ length: maxRank }, (_, index) => {
+        const rank = index + 1;
+        const genreRow = genreByRank.get(rank);
+        const globalRow = globalByRank.get(rank);
+        const genreObserved = Number(genreRow?.observedRows || 0);
+        const genreValue = Math.max(genreRow?.avgObservedSales || genreRow?.medianObservedSales || 0, 0);
+        const globalValue = Math.max(globalRow?.avgObservedSales || globalRow?.medianObservedSales || 1, 1);
+        const blend = genreObserved >= 20 ? 0.9 : genreObserved >= 5 ? 0.65 : genreObserved > 0 ? 0.35 : 0;
+        return {
+          rank,
+          weight: Math.max(globalValue * (1 - blend) + genreValue * blend, 1)
+        };
+      });
+      for (let index = 1; index < values.length; index += 1) {
+        values[index].weight = Math.min(values[index].weight, values[index - 1].weight * 0.985);
+      }
       const total = values.reduce((sum, row) => sum + row.weight, 0) || 1;
       return values.map(row => ({ rank: row.rank, weight: row.weight / total }));
     }
 
+    function rankCurveLabel(genre = state.genre) {
+      return genre !== ALL_GENRES && rankCurveByGenre.has(genre) ? "genre-specific rank curve" : "global rank curve";
+    }
+
     function rankRowsForTotal(total) {
-      return rankWeights().map(row => {
+      return rankWeights(state.genre).map(row => {
         const final = total * row.weight;
         const band = validationBand(final);
         return {
@@ -1189,7 +1217,7 @@
     }
 
     function selectedRankRows(rows) {
-      const weight = rankWeights().find(row => String(row.rank) === String(state.rank))?.weight || 0;
+      const weight = rankWeights(state.genre).find(row => String(row.rank) === String(state.rank))?.weight || 0;
       return withChartFields(rows).map(row => {
         const final = row.final * weight;
         const band = validationBand(final);
@@ -1203,7 +1231,7 @@
     }
 
     function rankOneAxisMax(rows) {
-      const rankOneWeight = rankWeights().find(row => String(row.rank) === "1")?.weight || 0;
+      const rankOneWeight = rankWeights(state.genre).find(row => String(row.rank) === "1")?.weight || 0;
       const values = withChartFields(rows).map(row => {
         const final = row.final * rankOneWeight;
         return validationBand(final).hi95;
@@ -2056,8 +2084,8 @@
       el("rankChartMeta").textContent = state.view === "shop"
         ? `${label} | top genres by selected-period sales`
         : salesOnly || fallbackForecast
-        ? `${label} | estimated rank positions from fallback market total`
-        : `${label} | ${rangeLabel} | scaled from model rank curve`;
+        ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()}`
+        : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()}`;
       el("timeChartMeta").textContent = state.view === "shop"
         ? `${label} | full shop sales for comparison`
         : salesOnly || fallbackForecast
