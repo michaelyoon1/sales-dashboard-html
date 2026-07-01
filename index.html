@@ -681,7 +681,8 @@
           <div class="panel-meta" id="rankChartMeta"></div>
         </div>
         <div class="legend">
-          <span><i class="swatch final"></i>Rank Profile Estimate</span>
+          <span><i class="swatch known"></i>Known Rank Evidence</span>
+          <span><i class="swatch final"></i>Modeled / Smoothed Rank</span>
           <span><i class="swatch interval"></i>Validation Error Band</span>
         </div>
       </div>
@@ -1186,16 +1187,24 @@
         const genreValue = Math.max(genreRow?.avgObservedSales || genreRow?.medianObservedSales || 0, 0);
         const globalValue = Math.max(globalRow?.avgObservedSales || globalRow?.medianObservedSales || 1, 1);
         const blend = genreObserved >= 20 ? 0.9 : genreObserved >= 5 ? 0.65 : genreObserved > 0 ? 0.35 : 0;
+        const observedRows = genre !== ALL_GENRES ? genreObserved : Number(globalRow?.observedRows || 0);
         return {
           rank,
-          weight: Math.max(globalValue * (1 - blend) + genreValue * blend, 1)
+          weight: Math.max(globalValue * (1 - blend) + genreValue * blend, 1),
+          observedRows,
+          hasKnownRank: observedRows > 0 && (genre === ALL_GENRES || genreByRank.has(rank))
         };
       });
       for (let index = 1; index < values.length; index += 1) {
         values[index].weight = Math.min(values[index].weight, values[index - 1].weight * 0.985);
       }
       const total = values.reduce((sum, row) => sum + row.weight, 0) || 1;
-      return values.map(row => ({ rank: row.rank, weight: row.weight / total }));
+      return values.map(row => ({
+        rank: row.rank,
+        weight: row.weight / total,
+        observedRows: row.observedRows,
+        hasKnownRank: row.hasKnownRank
+      }));
     }
 
     function rankCurveLabel(genre = state.genre) {
@@ -1211,6 +1220,8 @@
           final,
           lo95: band.lo95,
           hi95: band.hi95,
+          observedRows: row.observedRows,
+          hasKnownRank: row.hasKnownRank,
           rows: 1
         };
       });
@@ -1622,7 +1633,7 @@
         const barX = center - barW / 2;
         const barY = y(row.final);
         const isSelected = String(row.rank) === String(state.rank);
-        ctx.fillStyle = isSelected ? colors.selected : colors.final;
+        ctx.fillStyle = row.hasKnownRank ? colors.known : colors.final;
         ctx.fillRect(barX, barY, barW, Math.max(1, dims.bottom - barY));
         ctx.strokeStyle = colors.interval;
         ctx.beginPath();
@@ -1776,6 +1787,7 @@
       if ("rank" in row) {
         return [
           `<div class="tooltip-title">Rank ${escapeHtml(row.rank)}</div>`,
+          tooltipRow("Source", row.hasKnownRank ? `Known TENKI rank evidence (${number(row.observedRows)} rows)` : "Modeled / smoothed rank"),
           tooltipRow("Estimate", fmtYen.format(row.final)),
           tooltipRow("Band", `${fmtYen.format(row.lo95)} - ${fmtYen.format(row.hi95)}`)
         ].join("");
