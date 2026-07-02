@@ -616,10 +616,6 @@
             <option value="month">Monthly</option>
           </select>
         </span>
-        <span class="pill-control">
-          <span id="rankControlLabel">Rank</span>
-          <select id="rankSelect"></select>
-        </span>
         <span class="date-fields" aria-label="Custom date range">
           <input type="date" id="startDateInput" aria-label="Start date">
           <input type="date" id="endDateInput" aria-label="End date">
@@ -2040,8 +2036,6 @@
       el("shopSelect").innerHTML = (shopData.shops || [])
         .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
         .join("");
-      const maxRank = modelData.method?.maxRank || 20;
-      el("rankSelect").innerHTML = Array.from({ length: maxRank }, (_, index) => index + 1).map(rank => `<option value="${rank}">${rank}</option>`).join("");
     }
 
     function syncInputs() {
@@ -2054,14 +2048,12 @@
       el("shopViewButton").classList.toggle("active", state.view === "shop");
       el("shopField").hidden = state.view !== "shop";
       el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre in shop" : "Genre";
-      el("rankControlLabel").textContent = state.view === "shop" ? "Top genre" : "Rank";
       el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
       el("rangePresetSelect").value = state.rangePreset;
       el("granularitySelect").value = state.granularity;
       el("startDateInput").value = state.startDate;
       el("endDateInput").value = state.endDate;
-      el("rankSelect").value = state.rank;
       const range = dateRangeForSelection();
       for (const id of ["startDateInput", "endDateInput"]) {
         el(id).min = range.start;
@@ -2160,10 +2152,10 @@
         ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | monthly sales for this genre in this shop`
         : `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = state.view === "shop"
-        ? `${label} | top genres by selected-period sales`
+        ? `${label} | top genres by selected-period sales | click a bar to select`
         : salesOnly || fallbackForecast
-        ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()}`
-        : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()}`;
+        ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()} | click a bar to select`
+        : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()} | click a bar to select`;
       el("shopProjectionMeta").textContent = state.view === "genre"
         ? state.genre === ALL_GENRES
           ? "Choose a specific genre to see projected ranked shops"
@@ -2228,13 +2220,6 @@
       el("endDateInput").addEventListener("change", event => {
         state.rangePreset = "custom";
         state.endDate = event.target.value;
-        render();
-      });
-      el("rankSelect").addEventListener("change", event => {
-        state.rank = event.target.value;
-        if (state.view === "shop") {
-          state.shopGenre = shopGenreRankRows(20)[Math.max(0, Number(state.rank || 1) - 1)]?.genre || state.shopGenre;
-        }
         render();
       });
       for (const canvas of document.querySelectorAll("canvas")) {
