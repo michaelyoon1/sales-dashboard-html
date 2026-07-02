@@ -693,6 +693,22 @@
       </div>
     </section>
 
+    <section class="chart-panel" id="shopProjectionPanel">
+      <div class="panel-header">
+        <div>
+          <h2>Ranked Shops in Genre</h2>
+          <div class="panel-meta" id="shopProjectionMeta"></div>
+        </div>
+        <div class="legend">
+          <span><i class="swatch known"></i>Known TENKI Shop Sales</span>
+          <span><i class="swatch missing"></i>Modeled Missing Shop Sales</span>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="shopProjectionChart"></canvas>
+      </div>
+    </section>
+
     <section class="chart-panel range-only" id="timeChartPanel">
       <div class="panel-header">
         <div>
@@ -725,11 +741,13 @@
   <script src="top_items_daily_data.js?v=combined-300-genres-20260618"></script>
   <script src="projected_market_data.js?v=combined-300-genres-20260618"></script>
   <script src="shop_view_data.js?v=shop-mode-20260624"></script>
+  <script src="shop_projection_data.js?v=ranked-shop-projections-20260702"></script>
   <script src="event_impact_data.js?v=combined-300-genres-20260618"></script>
   <script>
     const topData = window.TOP_ITEMS_DAILY_DATA || { genres: [], dailyTotals: [] };
     const modelData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
     const shopData = window.SHOP_VIEW_DATA || { shops: [], daily: [], genreMonthly: [] };
+    const shopProjectionData = window.SHOP_PROJECTION_DATA || { monthly: [] };
     function expandRows(rows, columns) {
       if (!columns?.length || !Array.isArray(rows?.[0])) return rows || [];
       return rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
@@ -740,6 +758,7 @@
     shopData.shops = expandRows(shopData.shops, shopData.shopColumns);
     shopData.daily = expandRows(shopData.daily, shopData.dailyColumns);
     shopData.genreMonthly = expandRows(shopData.genreMonthly, shopData.genreMonthlyColumns);
+    shopProjectionData.monthly = expandRows(shopProjectionData.monthly, shopProjectionData.monthlyColumns);
     const ALL_GENRES = "__all__";
     const colors = {
       final: "#0f7a68",
@@ -780,6 +799,7 @@
     const rankCurveByGenre = new Map();
     const shopDailyByShop = new Map();
     const shopGenreMonthlyByShop = new Map();
+    const shopProjectionByGenre = new Map();
 
     for (const row of modelData.daily || []) {
       if (!projectedByGenre.has(row.genre)) projectedByGenre.set(row.genre, []);
@@ -804,6 +824,10 @@
     for (const row of shopData.genreMonthly || []) {
       if (!shopGenreMonthlyByShop.has(row.shop)) shopGenreMonthlyByShop.set(row.shop, []);
       shopGenreMonthlyByShop.get(row.shop).push(row);
+    }
+    for (const row of shopProjectionData.monthly || []) {
+      if (!shopProjectionByGenre.has(row.genre)) shopProjectionByGenre.set(row.genre, []);
+      shopProjectionByGenre.get(row.genre).push(row);
     }
 
     function el(id) {
@@ -1936,6 +1960,39 @@
         .map((row, index) => ({ ...row, rank: index + 1 }));
     }
 
+    function projectedShopRowsForGenre(limit = 20) {
+      if (state.view !== "genre") return [];
+      if (state.genre === ALL_GENRES) return [];
+      const { startMonth, endMonth } = monthRangeForActiveRange();
+      const rows = shopProjectionByGenre.get(state.genre) || [];
+      const buckets = new Map();
+      for (const row of rows) {
+        if (startMonth && row.month < startMonth) continue;
+        if (endMonth && row.month > endMonth) continue;
+        if (!buckets.has(row.shop)) {
+          buckets.set(row.shop, {
+            shop: row.shop,
+            category: shopName(row.shop),
+            final: 0,
+            known: 0,
+            imputed: 0,
+            missingRows: 0,
+            observedRows: 0
+          });
+        }
+        const bucket = buckets.get(row.shop);
+        bucket.final += row.totalSales || 0;
+        bucket.known += row.observedSales || 0;
+        bucket.imputed += row.projectedMissingSales || 0;
+        bucket.missingRows += row.missingRows || 0;
+        bucket.observedRows += row.observedRows || 0;
+      }
+      return [...buckets.values()]
+        .filter(row => row.final > 0)
+        .sort((a, b) => b.final - a.final)
+        .slice(0, limit);
+    }
+
     function selectedShopGenreLineRows() {
       const selectedGenre = state.shopGenre || shopGenresForShop(state.shop)[0]?.genre || "";
       if (!selectedGenre) return [];
@@ -2084,12 +2141,19 @@
         const genreRankRows = shopGenreRankRows(20);
         drawCategoryBarChart("rankChart", genreRankRows);
         drawLineChart("timeChart", chartRows);
+        el("shopProjectionPanel").hidden = true;
       } else if (salesOnly || fallbackForecast) {
         drawRankChart(rankRows);
         drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast && !aggregateFallback ? "log" : "linear" });
+        const projectedShopRows = projectedShopRowsForGenre(20);
+        el("shopProjectionPanel").hidden = false;
+        drawCategoryBarChart("shopProjectionChart", projectedShopRows);
       } else {
         drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
         drawRankChart(rankRows);
+        const projectedShopRows = projectedShopRowsForGenre(20);
+        el("shopProjectionPanel").hidden = false;
+        drawCategoryBarChart("shopProjectionChart", projectedShopRows);
       }
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
@@ -2100,6 +2164,11 @@
         : salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()}`
         : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()}`;
+      el("shopProjectionMeta").textContent = state.view === "genre"
+        ? state.genre === ALL_GENRES
+          ? "Choose a specific genre to see projected ranked shops"
+          : `${label} | top ranked shops | known TENKI plus modeled missing shop sales`
+        : "";
       el("timeChartMeta").textContent = state.view === "shop"
         ? `${label} | full shop sales for comparison`
         : salesOnly || fallbackForecast
