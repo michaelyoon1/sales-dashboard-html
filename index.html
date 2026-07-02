@@ -609,13 +609,6 @@
             <option value="custom">Custom</option>
           </select>
         </span>
-        <span class="pill-control">
-          <select id="granularitySelect" aria-label="Chart granularity">
-            <option value="day">Daily</option>
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-          </select>
-        </span>
         <span class="date-fields" aria-label="Custom date range">
           <input type="date" id="startDateInput" aria-label="Start date">
           <input type="date" id="endDateInput" aria-label="End date">
@@ -712,7 +705,14 @@
           <div class="panel-meta" id="timeChartMeta"></div>
         </div>
         <div class="legend">
-          <span><i class="swatch final"></i>Selected Rank Estimate</span>
+          <span class="pill-control">
+            <select id="granularitySelect" aria-label="Chart granularity">
+              <option value="day">Daily</option>
+              <option value="week">Weekly</option>
+              <option value="month">Monthly</option>
+            </select>
+          </span>
+          <span><i class="swatch final"></i><span id="timeChartLegendLabel">Selected Rank Estimate</span></span>
           <span><i class="swatch interval"></i>Validation Error Band</span>
         </div>
       </div>
@@ -2105,6 +2105,7 @@
       el("totalChartTitle").textContent = state.view === "shop" ? "Selected Genre Sales in Shop" : "Total Sales";
       el("rankChartTitle").textContent = state.view === "shop" ? "Genres Sold by This Shop" : "Sales by Rank";
       el("timeChartTitle").textContent = state.view === "shop" ? "Full Shop Sales" : "Rank Over Time";
+      el("timeChartLegendLabel").textContent = state.view === "shop" ? "Full Shop Sales" : "Selected Rank Estimate";
       if (state.view === "shop") {
         drawLineChart("totalChart", selectedShopGenreRows, {
           events: superSaleWindows,
