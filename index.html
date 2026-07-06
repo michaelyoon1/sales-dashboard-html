@@ -918,6 +918,7 @@
     function dateRangeForSelection() {
       const rows = rowsForSelection();
       if (!rows.length) return { start: "", end: "" };
+      if (state.view === "shop") return { start: rows[0].date, end: endOfMonth(rows[rows.length - 1].date) };
       return { start: rows[0].date, end: rows[rows.length - 1].date };
     }
 
@@ -1013,7 +1014,12 @@
 
     function filteredRows() {
       const { start, end } = activeRange();
-      return rowsForSelection().filter(row => (!start || row.date >= start) && (!end || row.date <= end));
+      return rowsForSelection().filter(row => {
+        if (state.view === "shop") {
+          return (!start || endOfMonth(row.date) >= start) && (!end || row.date <= end);
+        }
+        return (!start || row.date >= start) && (!end || row.date <= end);
+      });
     }
 
     function summarize(rows) {
@@ -1050,6 +1056,10 @@
 
     function firstDayOfMonth(date) {
       return `${date.slice(0, 7)}-01`;
+    }
+
+    function endOfMonth(date) {
+      return addDays(addMonths(firstDayOfMonth(date), 1), -1);
     }
 
     function firstDayOfQuarter(date) {
