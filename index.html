@@ -580,7 +580,7 @@
     <section class="controls" aria-label="Prediction result filters">
       <div class="view-tabs" role="tablist" aria-label="Dashboard view">
         <button class="view-tab active" id="genreViewButton" type="button" data-view="genre">By genre</button>
-        <button class="view-tab" id="shopViewButton" type="button" data-view="shop">By shop</button>
+        <button class="view-tab" id="shopViewButton" type="button" data-view="shop">By competitor shop</button>
       </div>
 
       <label class="field genre-field" id="genreField">
@@ -705,7 +705,7 @@
           <div class="panel-meta" id="timeChartMeta"></div>
         </div>
         <div class="legend">
-          <span class="pill-control">
+          <span class="pill-control" id="granularityControl">
             <select id="granularitySelect" aria-label="Chart granularity">
               <option value="day">Daily</option>
               <option value="week">Weekly</option>
@@ -796,6 +796,7 @@
     const shopDailyByShop = new Map();
     const shopGenreMonthlyByShop = new Map();
     const shopProjectionByGenre = new Map();
+    const shopProjectionByShop = new Map();
 
     for (const row of modelData.daily || []) {
       if (!projectedByGenre.has(row.genre)) projectedByGenre.set(row.genre, []);
@@ -824,6 +825,8 @@
     for (const row of shopProjectionData.monthly || []) {
       if (!shopProjectionByGenre.has(row.genre)) shopProjectionByGenre.set(row.genre, []);
       shopProjectionByGenre.get(row.genre).push(row);
+      if (!shopProjectionByShop.has(row.shop)) shopProjectionByShop.set(row.shop, []);
+      shopProjectionByShop.get(row.shop).push(row);
     }
 
     function el(id) {
@@ -862,8 +865,8 @@
 
     function shopGenresForShop(shop) {
       const totals = new Map();
-      for (const row of shopGenreMonthlyByShop.get(shop) || []) {
-        totals.set(row.genre, (totals.get(row.genre) || 0) + (row.sales || 0));
+      for (const row of shopProjectionByShop.get(shop) || []) {
+        totals.set(row.genre, (totals.get(row.genre) || 0) + (row.totalSales || 0));
       }
       return [...totals.entries()]
         .map(([genre, sales]) => ({ genre, name: genreName(genre), sales }))
@@ -871,19 +874,41 @@
     }
 
     function shopRowsForShop(shop) {
-      return (shopDailyByShop.get(shop) || []).map(row => ({
-        date: row.date,
-        observedSales: row.sales || 0,
-        projectedMissingSales: 0,
-        projectedTotalSales: row.sales || 0,
-        rankedRows: row.genreCount || 0,
-        observedRows: row.genreCount || 0,
-        projectedRows: 0,
-        eventTypeCount: 0,
-        shopMode: true,
-        items: row.items || 0,
-        pv: row.pv || 0
-      }));
+      const buckets = new Map();
+      for (const row of shopProjectionByShop.get(shop) || []) {
+        if (!buckets.has(row.month)) {
+          buckets.set(row.month, {
+            date: row.month,
+            observedSales: 0,
+            projectedMissingSales: 0,
+            projectedTotalSales: 0,
+            rankedRows: 0,
+            observedRows: 0,
+            projectedRows: 0,
+            eventTypeCount: 0,
+            shopMode: true
+          });
+        }
+        const bucket = buckets.get(row.month);
+        bucket.observedSales += row.observedSales || 0;
+        bucket.projectedMissingSales += row.projectedMissingSales || 0;
+        bucket.projectedTotalSales += row.totalSales || 0;
+        bucket.rankedRows += (row.observedRows || 0) + (row.missingRows || 0);
+        bucket.observedRows += row.observedRows || 0;
+        bucket.projectedRows += row.missingRows || 0;
+      }
+      return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function projectedShopOptions(limit = 500) {
+      const totals = new Map();
+      for (const row of shopProjectionData.monthly || []) {
+        totals.set(row.shop, (totals.get(row.shop) || 0) + (row.totalSales || 0));
+      }
+      return [...totals.entries()]
+        .map(([shop, sales]) => ({ shop, sales }))
+        .sort((a, b) => b.sales - a.sales)
+        .slice(0, limit);
     }
 
     function rowsForSelection() {
@@ -964,7 +989,8 @@
     function setDefaults() {
       if (!["genre", "shop"].includes(state.view)) state.view = "genre";
       if (!topData.genres.some(row => row.genre === state.genre) && state.genre !== ALL_GENRES) state.genre = ALL_GENRES;
-      if (!shopData.shops.some(row => row.shop === state.shop)) state.shop = shopData.shops[0]?.shop || "";
+      const shops = projectedShopOptions();
+      if (!shops.some(row => row.shop === state.shop)) state.shop = shops[0]?.shop || "";
       const shopGenres = shopGenresForShop(state.shop);
       if (!shopGenres.some(row => row.genre === state.shopGenre)) state.shopGenre = shopGenres[0]?.genre || "";
       if (!["day", "week", "month"].includes(state.granularity)) state.granularity = "day";
@@ -1339,20 +1365,24 @@
 
     function renderModelValidation() {
       if (state.view === "shop") {
-        const shop = shopData.shops.find(row => row.shop === state.shop) || {};
+        const rows = shopRowsForShop(state.shop);
+        const summary = summarize(rows);
+        const genres = shopGenresForShop(state.shop);
+        const knownShare = summary.total ? summary.known * 100 / summary.total : 0;
         el("modelMetricCards").innerHTML = [
-          ["Shop Sales", fmtYen.format(shop.sales || 0)],
-          ["Genres Sold", number(shop.genreCount || 0)],
-          ["Active Days", number(shop.activeDays || 0)],
-          ["Source", "TENKI sales"]
+          ["Estimated Shop Sales", fmtYen.format(summary.total || 0)],
+          ["TENKI-Observed", fmtYen.format(summary.known || 0)],
+          ["Estimated Missing", fmtYen.format(summary.missing || 0)],
+          ["Known Share", `${fmtPct.format(knownShare)}%`],
+          ["Genres", number(genres.length)]
         ].map(([label, value]) => `
           <div class="metric-card">
             <span>${escapeHtml(label)}</span>
             <strong>${escapeHtml(value)}</strong>
           </div>
         `).join("");
-        el("validationMeta").textContent = `${shopName(state.shop)} | shop view ranks genres by TENKI sales in the selected period`;
-        el("genreMetricsTable").innerHTML = `<tbody><tr><td>Shop mode uses observed TENKI shop sales directly. The genre ranking below updates from monthly shop-genre totals for the selected date range.</td></tr></tbody>`;
+        el("validationMeta").textContent = `${shopName(state.shop)} | competitor shop profile from ranked marketplace rows`;
+        el("genreMetricsTable").innerHTML = `<tbody><tr><td>Shop mode estimates competitor sales by combining TENKI-observed shop sales with modeled sales for ranked rows where TENKI has no matching sales.</td></tr></tbody>`;
         return;
       }
       const validation = modelData.method?.validation || {};
@@ -1907,9 +1937,10 @@
       }
       const columns = state.view === "shop" ? [
         ["date", "Date"],
-        ["final", "Shop Sales", fmtYen.format],
-        ["known", "TENKI Sales", fmtYen.format],
-        ["rankedRows", "Genres Sold", number]
+        ["final", "Estimated Sales", fmtYen.format],
+        ["known", "TENKI-Observed", fmtYen.format],
+        ["imputed", "Estimated Missing", fmtYen.format],
+        ["rankedRows", "Ranked Rows", number]
       ] : [
         ["date", "Date"],
         ["final", "Final Estimate", fmtYen.format],
@@ -1938,16 +1969,26 @@
     function shopGenreRankRows(limit = 20) {
       const { startMonth, endMonth } = monthRangeForActiveRange();
       const buckets = new Map();
-      for (const row of shopGenreMonthlyByShop.get(state.shop) || []) {
+      for (const row of shopProjectionByShop.get(state.shop) || []) {
         if (startMonth && row.month < startMonth) continue;
         if (endMonth && row.month > endMonth) continue;
         if (!buckets.has(row.genre)) {
-          buckets.set(row.genre, { genre: row.genre, category: genreName(row.genre), final: 0, known: 0, imputed: 0, rows: 0 });
+          buckets.set(row.genre, {
+            genre: row.genre,
+            category: genreName(row.genre),
+            final: 0,
+            known: 0,
+            imputed: 0,
+            knownLabel: "TENKI-observed",
+            imputedLabel: "Estimated missing",
+            rows: 0
+          });
         }
         const bucket = buckets.get(row.genre);
-        bucket.final += row.sales || 0;
-        bucket.known += row.sales || 0;
-        bucket.rows += 1;
+        bucket.final += row.totalSales || 0;
+        bucket.known += row.observedSales || 0;
+        bucket.imputed += row.projectedMissingSales || 0;
+        bucket.rows += (row.observedRows || 0) + (row.missingRows || 0);
       }
       return [...buckets.values()]
         .filter(row => row.final > 0)
@@ -1995,17 +2036,17 @@
       const selectedGenre = state.shopGenre || shopGenresForShop(state.shop)[0]?.genre || "";
       if (!selectedGenre) return [];
       const { startMonth, endMonth } = monthRangeForActiveRange();
-      return (shopGenreMonthlyByShop.get(state.shop) || [])
+      return (shopProjectionByShop.get(state.shop) || [])
         .filter(row => row.genre === selectedGenre)
         .filter(row => (!startMonth || row.month >= startMonth) && (!endMonth || row.month <= endMonth))
         .map(row => {
-          const final = row.sales || 0;
+          const final = row.totalSales || 0;
           const band = validationBand(final);
           return {
             date: row.month,
             final,
-            known: final,
-            imputed: 0,
+            known: row.observedSales || 0,
+            imputed: row.projectedMissingSales || 0,
             lo95: band.lo95,
             hi95: band.hi95,
             genre: selectedGenre
@@ -2035,7 +2076,7 @@
 
     function populateControls() {
       populateGenreOptions();
-      el("shopSelect").innerHTML = (shopData.shops || [])
+      el("shopSelect").innerHTML = projectedShopOptions()
         .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
         .join("");
     }
@@ -2049,7 +2090,8 @@
       el("genreViewButton").classList.toggle("active", state.view === "genre");
       el("shopViewButton").classList.toggle("active", state.view === "shop");
       el("shopField").hidden = state.view !== "shop";
-      el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre in shop" : "Genre";
+      el("granularityControl").hidden = state.view === "shop";
+      el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre focus" : "Genre";
       el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
       el("rangePresetSelect").value = state.rangePreset;
@@ -2104,10 +2146,10 @@
       renderSummary(rows);
       renderSuperSaleFocus(rows, superSaleWindows);
       renderModelValidation();
-      el("totalChartTitle").textContent = state.view === "shop" ? "Selected Genre Sales in Shop" : "Total Sales";
-      el("rankChartTitle").textContent = state.view === "shop" ? "Genres Sold by This Shop" : "Sales by Rank";
-      el("timeChartTitle").textContent = state.view === "shop" ? "Full Shop Sales" : "Rank Over Time";
-      el("timeChartLegendLabel").textContent = state.view === "shop" ? "Full Shop Sales" : "Selected Rank Estimate";
+      el("totalChartTitle").textContent = state.view === "shop" ? "Focused Genre Sales for Shop" : "Total Sales";
+      el("rankChartTitle").textContent = state.view === "shop" ? "Estimated Genre Mix" : "Sales by Rank";
+      el("timeChartTitle").textContent = state.view === "shop" ? "Total Estimated Shop Sales" : "Rank Over Time";
+      el("timeChartLegendLabel").textContent = state.view === "shop" ? "Estimated Shop Sales" : "Selected Rank Estimate";
       if (state.view === "shop") {
         drawLineChart("totalChart", selectedShopGenreRows, {
           events: superSaleWindows,
@@ -2152,10 +2194,10 @@
       }
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
-        ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | monthly sales for this genre in this shop`
+        ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | TENKI-observed plus estimated missing ranked sales`
         : `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = state.view === "shop"
-        ? `${label} | top genres by selected-period sales | click a bar to select`
+        ? `${label} | top genres by estimated shop sales | click a bar to focus`
         : salesOnly || fallbackForecast
         ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()} | click a bar to select`
         : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()} | click a bar to select`;
@@ -2163,7 +2205,7 @@
         ? `${label} | top competing ranked shops | TENKI-observed plus estimated unobserved sales`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
-        ? `${label} | full shop sales for comparison`
+        ? `${label} | total estimated sales across ranked genres`
         : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
