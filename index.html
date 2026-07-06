@@ -685,12 +685,12 @@
     <section class="chart-panel" id="shopProjectionPanel">
       <div class="panel-header">
         <div>
-          <h2>Ranked Shops in Genre</h2>
+          <h2>Competing Shops in Genre</h2>
           <div class="panel-meta" id="shopProjectionMeta"></div>
         </div>
         <div class="legend">
-          <span><i class="swatch known"></i>Known TENKI Shop Sales</span>
-          <span><i class="swatch missing"></i>Modeled Missing Shop Sales</span>
+          <span><i class="swatch known"></i>TENKI-Observed Shop Sales</span>
+          <span><i class="swatch missing"></i>Estimated Competitor Sales</span>
         </div>
       </div>
       <div class="canvas-wrap">
@@ -1802,8 +1802,8 @@
         return [
           `<div class="tooltip-title">${escapeHtml(row.category)}</div>`,
           tooltipRow("Final estimate", fmtYen.format(row.final || 0)),
-          tooltipRow("Known TENKI", fmtYen.format(row.known || 0)),
-          tooltipRow("Modeled missing", fmtYen.format(row.imputed || 0))
+          tooltipRow(row.knownLabel || "Known TENKI", fmtYen.format(row.known || 0)),
+          tooltipRow(row.imputedLabel || "Modeled missing", fmtYen.format(row.imputed || 0))
         ].join("");
       }
       if ("rank" in row) {
@@ -1972,6 +1972,8 @@
             final: 0,
             known: 0,
             imputed: 0,
+            knownLabel: "TENKI-observed",
+            imputedLabel: "Estimated competitor",
             missingRows: 0,
             observedRows: 0
           });
@@ -2158,7 +2160,7 @@
         ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()} | click a bar to select`
         : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()} | click a bar to select`;
       el("shopProjectionMeta").textContent = state.view === "genre"
-        ? `${label} | top ranked shops | known TENKI plus modeled missing shop sales`
+        ? `${label} | top competing ranked shops | TENKI-observed plus estimated unobserved sales`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
         ? `${label} | full shop sales for comparison`
