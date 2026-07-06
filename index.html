@@ -652,7 +652,7 @@
       </aside>
     </section>
 
-    <section class="table-panel" aria-label="Model validation">
+    <section class="table-panel" id="validationPanel" aria-label="Model validation">
       <div class="panel-header">
         <div>
           <h2>Model Validation</h2>
@@ -1374,25 +1374,8 @@
     }
 
     function renderModelValidation() {
+      el("validationPanel").hidden = state.view === "shop";
       if (state.view === "shop") {
-        const rows = shopRowsForShop(state.shop);
-        const summary = summarize(rows);
-        const genres = shopGenresForShop(state.shop);
-        const knownShare = summary.total ? summary.known * 100 / summary.total : 0;
-        el("modelMetricCards").innerHTML = [
-          ["Estimated Shop Sales", fmtYen.format(summary.total || 0)],
-          ["TENKI-Observed", fmtYen.format(summary.known || 0)],
-          ["Estimated Missing", fmtYen.format(summary.missing || 0)],
-          ["Known Share", `${fmtPct.format(knownShare)}%`],
-          ["Genres", number(genres.length)]
-        ].map(([label, value]) => `
-          <div class="metric-card">
-            <span>${escapeHtml(label)}</span>
-            <strong>${escapeHtml(value)}</strong>
-          </div>
-        `).join("");
-        el("validationMeta").textContent = `${shopName(state.shop)} | competitor shop profile from ranked marketplace rows`;
-        el("genreMetricsTable").innerHTML = `<tbody><tr><td>Shop mode estimates competitor sales by combining TENKI-observed shop sales with modeled sales for ranked rows where TENKI has no matching sales.</td></tr></tbody>`;
         return;
       }
       const validation = modelData.method?.validation || {};
