@@ -2139,14 +2139,14 @@
         drawRankChart(rankRows);
         drawLineChart("timeChart", rankLineRows, { yScale: fallbackForecast && !aggregateFallback ? "log" : "linear" });
         const projectedShopRows = projectedShopRowsForGenre(20);
-        el("shopProjectionPanel").hidden = false;
-        drawCategoryBarChart("shopProjectionChart", projectedShopRows);
+        el("shopProjectionPanel").hidden = !projectedShopRows.length;
+        if (projectedShopRows.length) drawCategoryBarChart("shopProjectionChart", projectedShopRows);
       } else {
         drawLineChart("timeChart", rankLineRows, { yMax: rankOneAxisMax(aggregateRows) });
         drawRankChart(rankRows);
         const projectedShopRows = projectedShopRowsForGenre(20);
-        el("shopProjectionPanel").hidden = false;
-        drawCategoryBarChart("shopProjectionChart", projectedShopRows);
+        el("shopProjectionPanel").hidden = !projectedShopRows.length;
+        if (projectedShopRows.length) drawCategoryBarChart("shopProjectionChart", projectedShopRows);
       }
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
@@ -2158,9 +2158,7 @@
         ? `${label} | estimated rank positions from fallback market total | ${rankCurveLabel()} | click a bar to select`
         : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()} | click a bar to select`;
       el("shopProjectionMeta").textContent = state.view === "genre"
-        ? state.genre === ALL_GENRES
-          ? "Choose a specific genre to see projected ranked shops"
-          : `${label} | top ranked shops | known TENKI plus modeled missing shop sales`
+        ? `${label} | top ranked shops | known TENKI plus modeled missing shop sales`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
         ? `${label} | full shop sales for comparison`
