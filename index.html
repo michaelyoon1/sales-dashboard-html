@@ -2090,7 +2090,6 @@
       el("genreViewButton").classList.toggle("active", state.view === "genre");
       el("shopViewButton").classList.toggle("active", state.view === "shop");
       el("shopField").hidden = state.view !== "shop";
-      el("granularityControl").hidden = state.view === "shop";
       el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre focus" : "Genre";
       el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
@@ -2205,7 +2204,7 @@
         ? `${label} | top competing ranked shops | TENKI-observed plus estimated unobserved sales`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
-        ? `${label} | total estimated sales across ranked genres`
+        ? `${label} | total estimated sales across ranked genres | ${state.granularity} view from monthly competitor estimates`
         : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
