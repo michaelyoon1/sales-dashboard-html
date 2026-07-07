@@ -854,9 +854,14 @@
       return new Intl.NumberFormat("en-US", { maximumFractionDigits: digits }).format(numberValue);
     }
 
+    const genreNameOverrides = {
+      "566403": "Nintendo Switch Main Units",
+      "568376": "PlayStation 5 Main Units"
+    };
+
     function genreName(genre) {
       if (genre === ALL_GENRES) return "All Genres";
-      return topData.genres.find(row => row.genre === genre)?.name || shopData.genreNames?.[genre] || `Genre ${genre}`;
+      return genreNameOverrides[genre] || topData.genres.find(row => row.genre === genre)?.name || shopData.genreNames?.[genre] || `Genre ${genre}`;
     }
 
     function shopName(shop) {
