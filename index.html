@@ -705,6 +705,11 @@
           <div class="panel-meta" id="timeChartMeta"></div>
         </div>
         <div class="legend">
+          <span class="pill-control" id="rankControl">
+            <select id="rankSelect" aria-label="Rank over time">
+              <option value="1">Rank 1</option>
+            </select>
+          </span>
           <span class="pill-control" id="granularityControl">
             <select id="granularitySelect" aria-label="Chart granularity">
               <option value="day">Daily</option>
@@ -1059,6 +1064,8 @@
       const shopGenres = shopGenresForShop(state.shop);
       if (!shopGenres.some(row => row.genre === state.shopGenre)) state.shopGenre = shopGenres[0]?.genre || "";
       if (!["day", "week", "month"].includes(state.granularity)) state.granularity = "day";
+      const maxRank = modelData.method?.maxRank || 20;
+      if (Number(state.rank) < 1 || Number(state.rank) > maxRank) state.rank = "1";
       if (!["today", "7d", "4w", "6m", "12m", "mtd", "qtd", "ytd", "all", "custom"].includes(state.rangePreset)) {
         state.rangePreset = "all";
       }
@@ -2133,6 +2140,11 @@
       el("shopSelect").innerHTML = projectedShopOptions()
         .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
         .join("");
+      const maxRank = modelData.method?.maxRank || 20;
+      el("rankSelect").innerHTML = Array.from({ length: maxRank }, (_, index) => {
+        const rank = String(index + 1);
+        return `<option value="${rank}">Rank ${rank}</option>`;
+      }).join("");
     }
 
     function syncInputs() {
@@ -2144,9 +2156,11 @@
       el("genreViewButton").classList.toggle("active", state.view === "genre");
       el("shopViewButton").classList.toggle("active", state.view === "shop");
       el("shopField").hidden = state.view !== "shop";
+      el("rankControl").hidden = state.view === "shop";
       el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre focus" : "Genre";
       el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
+      el("rankSelect").value = state.rank;
       el("rangePresetSelect").value = state.rangePreset;
       el("granularitySelect").value = state.granularity;
       el("startDateInput").value = state.startDate;
@@ -2308,6 +2322,10 @@
       });
       el("granularitySelect").addEventListener("change", event => {
         state.granularity = event.target.value;
+        render();
+      });
+      el("rankSelect").addEventListener("change", event => {
+        state.rank = event.target.value;
         render();
       });
       el("startDateInput").addEventListener("change", event => {
