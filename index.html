@@ -2277,7 +2277,9 @@
     function bindControls() {
       for (const button of [el("genreViewButton"), el("shopViewButton")]) {
         button.addEventListener("click", event => {
-          state.view = event.currentTarget.dataset.view;
+          const nextView = event.currentTarget.dataset.view;
+          if (state.view !== nextView) state.granularity = "day";
+          state.view = nextView;
           resetDatesForGenre();
           render();
         });
