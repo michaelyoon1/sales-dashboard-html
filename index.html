@@ -794,6 +794,7 @@
     const sourceByGenre = new Map();
     const rankCurveByGenre = new Map();
     const shopDailyByShop = new Map();
+    const marketDailyByMonth = new Map();
     const shopGenreMonthlyByShop = new Map();
     const shopProjectionByGenre = new Map();
     const shopProjectionByShop = new Map();
@@ -816,6 +817,10 @@
     for (const row of shopData.daily || []) {
       if (!shopDailyByShop.has(row.shop)) shopDailyByShop.set(row.shop, []);
       shopDailyByShop.get(row.shop).push(row);
+      const key = monthKey(row.date);
+      if (!marketDailyByMonth.has(key)) marketDailyByMonth.set(key, new Map());
+      const monthBucket = marketDailyByMonth.get(key);
+      monthBucket.set(row.date, (monthBucket.get(row.date) || 0) + Math.max(row.sales || 0, 0));
     }
     for (const rows of shopDailyByShop.values()) rows.sort((a, b) => a.date.localeCompare(b.date));
     for (const row of shopData.genreMonthly || []) {
@@ -878,12 +883,28 @@
         .sort((a, b) => b.sales - a.sales);
     }
 
+    function daysInMonth(month) {
+      const start = new Date(`${month}T00:00:00`);
+      if (!Number.isFinite(start.getTime())) return [];
+      const year = start.getFullYear();
+      const monthIndex = start.getMonth();
+      const lastDay = new Date(year, monthIndex + 1, 0).getDate();
+      return Array.from({ length: lastDay }, (_, index) => {
+        const day = new Date(year, monthIndex, index + 1);
+        return day.toISOString().slice(0, 10);
+      });
+    }
+
+    function monthKey(date) {
+      return `${date.slice(0, 7)}-01`;
+    }
+
     function shopRowsForShop(shop) {
       const buckets = new Map();
       for (const row of shopProjectionByShop.get(shop) || []) {
         if (!buckets.has(row.month)) {
           buckets.set(row.month, {
-            date: row.month,
+            month: row.month,
             observedSales: 0,
             projectedMissingSales: 0,
             projectedTotalSales: 0,
@@ -902,7 +923,46 @@
         bucket.observedRows += row.observedRows || 0;
         bucket.projectedRows += row.missingRows || 0;
       }
-      return [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date));
+      const dailyByMonth = new Map();
+      for (const row of shopDailyByShop.get(shop) || []) {
+        const key = monthKey(row.date);
+        if (!dailyByMonth.has(key)) dailyByMonth.set(key, []);
+        dailyByMonth.get(key).push(row);
+      }
+      const rows = [];
+      for (const bucket of buckets.values()) {
+        const observedDays = (dailyByMonth.get(bucket.month) || []).map(row => ({ date: row.date, sales: Math.max(row.sales || 0, 0) }));
+        const marketDays = [...(marketDailyByMonth.get(bucket.month) || new Map()).entries()]
+          .map(([date, sales]) => ({ date, sales }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const observedMonthTotal = observedDays.reduce((sum, row) => sum + row.sales, 0);
+        const marketMonthTotal = marketDays.reduce((sum, row) => sum + row.sales, 0);
+        const days = observedMonthTotal > 0
+          ? observedDays
+          : marketMonthTotal > 0
+          ? marketDays
+          : daysInMonth(bucket.month).map(date => ({ date, sales: 0 }));
+        if (!days.length) continue;
+        const shapeTotal = observedMonthTotal > 0 ? observedMonthTotal : marketMonthTotal;
+        const evenWeight = 1 / days.length;
+        for (const day of days) {
+          const shapeWeight = shapeTotal > 0 ? day.sales / shapeTotal : evenWeight;
+          const final = (bucket.projectedTotalSales || 0) * shapeWeight;
+          const known = (bucket.observedSales || 0) * shapeWeight;
+          rows.push({
+            date: day.date,
+            observedSales: known,
+            projectedMissingSales: Math.max(0, final - known),
+            projectedTotalSales: final,
+            rankedRows: (bucket.rankedRows || 0) * shapeWeight,
+            observedRows: (bucket.observedRows || 0) * shapeWeight,
+            projectedRows: (bucket.projectedRows || 0) * shapeWeight,
+            eventTypeCount: 0,
+            shopMode: true
+          });
+        }
+      }
+      return rows.sort((a, b) => a.date.localeCompare(b.date));
     }
 
     function projectedShopOptions(limit = 500) {
@@ -923,7 +983,6 @@
     function dateRangeForSelection() {
       const rows = rowsForSelection();
       if (!rows.length) return { start: "", end: "" };
-      if (state.view === "shop") return { start: rows[0].date, end: endOfMonth(rows[rows.length - 1].date) };
       return { start: rows[0].date, end: rows[rows.length - 1].date };
     }
 
@@ -1020,9 +1079,6 @@
     function filteredRows() {
       const { start, end } = activeRange();
       return rowsForSelection().filter(row => {
-        if (state.view === "shop") {
-          return (!start || endOfMonth(row.date) >= start) && (!end || row.date <= end);
-        }
         return (!start || row.date >= start) && (!end || row.date <= end);
       });
     }
@@ -2202,7 +2258,7 @@
         ? `${label} | top competing ranked shops | TENKI-observed plus estimated unobserved sales`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
-        ? `${label} | total estimated sales across ranked genres | ${state.granularity} view from monthly competitor estimates`
+        ? `${label} | total estimated sales across ranked genres | ${state.granularity} view shaped by daily TENKI sales`
         : salesOnly || fallbackForecast
         ? `${label} rank ${state.rank} | fallback rank projection${fallbackForecast && !aggregateFallback ? " | log scale" : ""}`
         : `${label} rank ${state.rank} | ${rangeLabel} | ${state.granularity} | compared on rank 1 scale`;
