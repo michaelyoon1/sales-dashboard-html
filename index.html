@@ -1959,7 +1959,7 @@
           tooltipRow(row.imputedLabel || "Modeled missing", fmtYen.format(row.imputed || 0))
         ];
         if (row.topItems?.length) {
-          const itemLabels = row.topItems.map(item => `${item.item} (${fmtYen.format(item.sales || 0)})`);
+          const itemLabels = row.topItems.map(item => item.item);
           rows.push(tooltipRow("Shop item IDs 1-5", itemLabels.slice(0, 5).join(", ")));
           if (itemLabels.length > 5) rows.push(tooltipRow("Shop item IDs 6-10", itemLabels.slice(5, 10).join(", ")));
         } else if (row.genre && row.shop) {
