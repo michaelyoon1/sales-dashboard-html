@@ -836,6 +836,8 @@
     const projectedByGenre = new Map();
     const sourceByGenre = new Map();
     const rankCurveByGenre = new Map();
+    const itemRowsByShop = new Map();
+    const itemSalesByShop = new Map();
     const shopDailyByShop = new Map();
     const marketDailyByMonth = new Map();
     const shopGenreMonthlyByShop = new Map();
@@ -856,6 +858,10 @@
     for (const row of topData.dailyTotals || []) {
       if (!sourceByGenre.has(row.genre)) sourceByGenre.set(row.genre, []);
       sourceByGenre.get(row.genre).push(row);
+    }
+    for (const row of topData.topItems || []) {
+      itemRowsByShop.set(row.shop, (itemRowsByShop.get(row.shop) || 0) + 1);
+      itemSalesByShop.set(row.shop, (itemSalesByShop.get(row.shop) || 0) + (row.sales || 0));
     }
     for (const row of shopData.daily || []) {
       if (!shopDailyByShop.has(row.shop)) shopDailyByShop.set(row.shop, []);
@@ -1013,9 +1019,17 @@
       for (const row of shopProjectionData.monthly || []) {
         totals.set(row.shop, (totals.get(row.shop) || 0) + (row.totalSales || 0));
       }
+      for (const shop of itemRowsByShop.keys()) {
+        if (!totals.has(shop)) totals.set(shop, 0);
+      }
       return [...totals.entries()]
-        .map(([shop, sales]) => ({ shop, sales }))
-        .sort((a, b) => b.sales - a.sales)
+        .map(([shop, sales]) => ({
+          shop,
+          sales,
+          itemRows: itemRowsByShop.get(shop) || 0,
+          itemSales: itemSalesByShop.get(shop) || 0
+        }))
+        .sort((a, b) => Boolean(b.itemRows) - Boolean(a.itemRows) || b.sales - a.sales || b.itemSales - a.itemSales)
         .slice(0, limit);
     }
 
@@ -2115,7 +2129,7 @@
       const viewLabel = state.view === "shop" ? `${label} | observed item rows by item and genre` : `${label} | observed item rows by item, shop, and genre`;
       el("topItemsTableMeta").textContent = itemRows.length ? `${viewLabel} | ${number(itemRows.length)} sold items shown` : `${viewLabel} | no observed item rows`;
       if (!itemRows.length) {
-        el("topItemsTable").innerHTML = `<tbody><tr><td><div class="empty-state">No observed item-level rows for this selection.</div></td></tr></tbody>`;
+        el("topItemsTable").innerHTML = `<tbody><tr><td><div class="empty-state">No observed item-level rows for this selected shop/date range. Choose a shop marked with item rows in the dropdown.</div></td></tr></tbody>`;
         return;
       }
       const columns = [
@@ -2326,7 +2340,11 @@
     function populateControls() {
       populateGenreOptions();
       el("shopSelect").innerHTML = projectedShopOptions()
-        .map((shop, index) => `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${fmtYen.format(shop.sales || 0)}</option>`)
+        .map((shop, index) => {
+          const itemNote = shop.itemRows ? `${number(shop.itemRows)} item rows` : "no item rows";
+          const salesLabel = shop.sales ? `${fmtYen.format(shop.sales)} est` : `${fmtYen.format(shop.itemSales)} observed items`;
+          return `<option value="${escapeHtml(shop.shop)}">${index + 1}. ${escapeHtml(shopName(shop.shop))} - ${salesLabel} - ${itemNote}</option>`;
+        })
         .join("");
       const maxRank = modelData.method?.maxRank || 20;
       el("rankSelect").innerHTML = Array.from({ length: maxRank }, (_, index) => {
