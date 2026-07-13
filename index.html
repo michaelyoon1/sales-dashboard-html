@@ -635,6 +635,13 @@
             <div class="panel-meta" id="totalChartMeta"></div>
           </div>
           <div class="legend">
+            <span class="pill-control" id="focusGranularityControl" hidden>
+              <select id="focusGranularitySelect" aria-label="Focused chart granularity">
+                <option value="day">Daily</option>
+                <option value="week">Weekly</option>
+                <option value="month">Monthly</option>
+              </select>
+            </span>
             <span><i class="swatch final"></i>Final Estimate</span>
             <span><i class="swatch event"></i>Super Sale</span>
             <span><i class="swatch interval"></i>Validation Error Band</span>
@@ -828,6 +835,7 @@
       shopGenre: params.get("shopGenre") || "",
       rangePreset: params.get("range") || "all",
       granularity: params.get("granularity") || "day",
+      focusGranularity: params.get("focusGranularity") || "day",
       startDate: params.get("start") || "",
       endDate: params.get("end") || "",
       rank: params.get("rank") || "1"
@@ -1116,6 +1124,7 @@
       const shopGenres = shopGenresForShop(state.shop);
       if (!shopGenres.some(row => row.genre === state.shopGenre)) state.shopGenre = shopGenres[0]?.genre || "";
       if (!["day", "week", "month"].includes(state.granularity)) state.granularity = "day";
+      if (!["day", "week", "month"].includes(state.focusGranularity)) state.focusGranularity = "day";
       const maxRank = modelData.method?.maxRank || 20;
       if (Number(state.rank) < 1 || Number(state.rank) > maxRank) state.rank = "1";
       if (!["today", "7d", "4w", "6m", "12m", "mtd", "qtd", "ytd", "all", "custom"].includes(state.rangePreset)) {
@@ -2296,6 +2305,27 @@
         .slice(0, limit);
     }
 
+    function aggregateLineRows(rows, granularity) {
+      if (granularity === "day") return rows;
+      const buckets = new Map();
+      for (const row of rows) {
+        const key = granularity === "week" ? weekKey(row.date) : `${row.date.slice(0, 7)}-01`;
+        if (!buckets.has(key)) {
+          buckets.set(key, { date: key, final: 0, known: 0, imputed: 0, genre: row.genre });
+        }
+        const bucket = buckets.get(key);
+        bucket.final += row.final || 0;
+        bucket.known += row.known || 0;
+        bucket.imputed += row.imputed || 0;
+      }
+      return [...buckets.values()]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(row => {
+          const band = validationBand(row.final || 0);
+          return { ...row, lo95: band.lo95, hi95: band.hi95 };
+        });
+    }
+
     function selectedShopGenreLineRows() {
       const selectedGenre = state.shopGenre || shopGenresForShop(state.shop)[0]?.genre || "";
       if (!selectedGenre) return [];
@@ -2392,12 +2422,14 @@
       el("shopViewButton").classList.toggle("active", state.view === "shop");
       el("shopField").hidden = state.view !== "shop";
       el("rankControl").hidden = state.view === "shop";
+      el("focusGranularityControl").hidden = state.view !== "shop";
       el("genreField").querySelector("span").textContent = state.view === "shop" ? "Genre focus" : "Genre";
       el("genreSelect").value = state.view === "shop" ? state.shopGenre : state.genre;
       el("shopSelect").value = state.shop;
       el("rankSelect").value = state.rank;
       el("rangePresetSelect").value = state.rangePreset;
       el("granularitySelect").value = state.granularity;
+      el("focusGranularitySelect").value = state.focusGranularity;
       el("startDateInput").value = state.startDate;
       el("endDateInput").value = state.endDate;
       const range = dateRangeForSelection();
@@ -2415,6 +2447,7 @@
       if (state.view === "shop" && state.shopGenre) params.set("shopGenre", state.shopGenre);
       if (state.rangePreset !== "all") params.set("range", state.rangePreset);
       if (state.granularity !== "day") params.set("granularity", state.granularity);
+      if (state.view === "shop" && state.focusGranularity !== "day") params.set("focusGranularity", state.focusGranularity);
       if (state.rangePreset === "custom") {
         if (state.startDate) params.set("start", state.startDate);
         if (state.endDate) params.set("end", state.endDate);
@@ -2443,7 +2476,8 @@
       const usedTableRangeFallback = !rangedTableItemRows.length && fallbackTableItemRows.length > 0;
       const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
       const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
-      const selectedShopGenreRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
+      const selectedShopGenreDailyRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
+      const selectedShopGenreRows = state.view === "shop" ? aggregateLineRows(selectedShopGenreDailyRows, state.focusGranularity) : [];
       const salesOnly = state.genre !== ALL_GENRES && rows.some(row => row.salesOnly);
       const fallbackForecast = state.genre !== ALL_GENRES && rows.some(row => String(row.forecastSource || "").includes("fallback"));
       const aggregateFallback = state.genre !== ALL_GENRES && rows.some(row => row.forecastSource === "aggregate_genre_anchor_fallback");
@@ -2460,7 +2494,7 @@
       if (state.view === "shop") {
         drawLineChart("totalChart", selectedShopGenreRows, {
           events: superSaleWindows,
-          eventGranularity: "day",
+          eventGranularity: state.focusGranularity,
           click: hit => {
             state.rangePreset = "custom";
             state.startDate = hit.data.date;
@@ -2504,7 +2538,7 @@
       renderTopItemsTable(tableItemRows, label, usedTableRangeFallback);
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
-        ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | TENKI-observed plus estimated missing ranked sales`
+        ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | ${state.focusGranularity} view | TENKI-observed plus estimated missing ranked sales`
         : `${label} | ${rangeLabel} | ${number(rows.length)} days | ${state.granularity}${salesOnly ? " | TENKI sales only; no ranking rows found" : ""}${aggregateFallback ? " | all TENKI genre sales anchor" : fallbackForecast ? " | log scale | similar-genre forecast; no ranking rows found" : ""}`;
       el("rankChartMeta").textContent = state.view === "shop"
         ? `${label} | top genres by estimated shop sales | click a bar to focus`
@@ -2568,6 +2602,10 @@
       });
       el("granularitySelect").addEventListener("change", event => {
         state.granularity = event.target.value;
+        render();
+      });
+      el("focusGranularitySelect").addEventListener("change", event => {
+        state.focusGranularity = event.target.value;
         render();
       });
       el("rankSelect").addEventListener("change", event => {
