@@ -491,6 +491,15 @@
       white-space: nowrap;
     }
 
+    .item-rank-table th:nth-child(2),
+    .item-rank-table td:nth-child(2),
+    .item-rank-table th:nth-child(3),
+    .item-rank-table td:nth-child(3),
+    .item-rank-table th:nth-child(4),
+    .item-rank-table td:nth-child(4) {
+      text-align: left;
+    }
+
     th {
       color: var(--muted);
       font-size: 12px;
@@ -739,6 +748,18 @@
       </div>
       <div class="canvas-wrap">
         <canvas id="timeChart"></canvas>
+      </div>
+    </section>
+
+    <section class="table-panel" id="topItemsTablePanel">
+      <div class="panel-header">
+        <div>
+          <h2>Top Items</h2>
+          <div class="panel-meta" id="topItemsTableMeta"></div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="topItemsTable" class="item-rank-table"></table>
       </div>
     </section>
 
@@ -2054,6 +2075,70 @@
       el("rowsTable").innerHTML = `${head}<tbody>${body}</tbody>`;
     }
 
+    function topItemTableRows(limit = 50) {
+      const { startMonth, endMonth } = monthRangeForActiveRange();
+      const buckets = new Map();
+      for (const row of topData.topItems || []) {
+        if (state.view === "shop" && row.shop !== state.shop) continue;
+        if (state.view === "genre" && state.genre !== ALL_GENRES && row.genre !== state.genre) continue;
+        if (startMonth && row.month < startMonth) continue;
+        if (endMonth && row.month > endMonth) continue;
+        const key = state.view === "shop" ? `${row.item}|${row.genre}` : `${row.item}|${row.shop}|${row.genre}`;
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            item: row.item,
+            shop: row.shop,
+            genre: row.genre,
+            genreLabel: genreName(row.genre),
+            sales: 0,
+            salesItems: 0,
+            pv: 0,
+            activeMonths: 0,
+            activeDays: 0
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.sales += row.sales || 0;
+        bucket.salesItems += row.salesItems || 0;
+        bucket.pv += row.pv || 0;
+        bucket.activeMonths += 1;
+        bucket.activeDays += row.activeDays || 0;
+      }
+      return [...buckets.values()]
+        .filter(row => row.sales > 0)
+        .sort((a, b) => b.sales - a.sales || b.salesItems - a.salesItems || b.pv - a.pv)
+        .slice(0, limit)
+        .map((row, index) => ({ ...row, rank: index + 1 }));
+    }
+
+    function renderTopItemsTable(itemRows, label) {
+      const viewLabel = state.view === "shop" ? `${label} | observed item rows by item and genre` : `${label} | observed item rows by item, shop, and genre`;
+      el("topItemsTableMeta").textContent = itemRows.length ? `${viewLabel} | ${number(itemRows.length)} sold items shown` : `${viewLabel} | no observed item rows`;
+      if (!itemRows.length) {
+        el("topItemsTable").innerHTML = `<tbody><tr><td><div class="empty-state">No observed item-level rows for this selection.</div></td></tr></tbody>`;
+        return;
+      }
+      const columns = [
+        ["rank", "#", number],
+        ["item", "Item ID", value => `Item ${value}`],
+        ["shop", "Shop", shopName],
+        ["genreLabel", "Genre"],
+        ["sales", "Sales", fmtYen.format],
+        ["salesItems", "Units", number],
+        ["pv", "PV", number],
+        ["activeMonths", "Months", number]
+      ];
+      const head = `<thead><tr>${columns.map(([, label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead>`;
+      const body = itemRows.map(row => {
+        const cells = columns.map(([key, , formatter]) => {
+          const value = row[key] ?? "";
+          return `<td>${escapeHtml(formatter ? formatter(value) : value)}</td>`;
+        }).join("");
+        return `<tr>${cells}</tr>`;
+      }).join("");
+      el("topItemsTable").innerHTML = `${head}<tbody>${body}</tbody>`;
+    }
+
     function monthRangeForActiveRange() {
       const { start, end } = activeRange();
       return {
@@ -2305,6 +2390,7 @@
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
       const itemRows = topItemRowsForSelection(20);
+      const tableItemRows = topItemTableRows(50);
       const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
       const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
       const selectedShopGenreRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
@@ -2365,6 +2451,7 @@
       }
       el("itemPanel").hidden = state.view !== "genre" || !itemRows.length;
       if (state.view === "genre" && itemRows.length) drawCategoryBarChart("itemChart", itemRows);
+      renderTopItemsTable(tableItemRows, label);
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
         ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | TENKI-observed plus estimated missing ranked sales`
