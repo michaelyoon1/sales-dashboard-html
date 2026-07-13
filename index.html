@@ -698,6 +698,22 @@
       </div>
     </section>
 
+    <section class="chart-panel" id="itemPanel">
+      <div class="panel-header">
+        <div>
+          <h2>Top Items in Genre</h2>
+          <div class="panel-meta" id="itemMeta"></div>
+        </div>
+        <div class="legend">
+          <span><i class="swatch known"></i>Observed Item Sales</span>
+          <span>Hover for item ID, shop, units, and PV</span>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="itemChart"></canvas>
+      </div>
+    </section>
+
     <section class="chart-panel range-only" id="timeChartPanel">
       <div class="panel-header">
         <div>
@@ -754,6 +770,7 @@
       return rows.map(row => Object.fromEntries(columns.map((column, index) => [column, row[index]])));
     }
     topData.dailyTotals = expandRows(topData.dailyTotals, topData.dailyTotalColumns);
+    topData.topItems = expandRows(topData.topItems, topData.topItemColumns);
     modelData.daily = expandRows(modelData.daily, modelData.dailyColumns);
     modelData.genreRankCurves = expandRows(modelData.genreRankCurves, modelData.genreRankCurveColumns);
     shopData.shops = expandRows(shopData.shops, shopData.shopColumns);
@@ -1890,6 +1907,16 @@
 
     function tooltipHtml(row) {
       if ("category" in row) {
+        if (row.item) {
+          return [
+            `<div class="tooltip-title">${escapeHtml(row.category)}</div>`,
+            tooltipRow("Shop", shopName(row.shop)),
+            tooltipRow("Observed sales", fmtYen.format(row.final || 0)),
+            tooltipRow("Units", number(row.salesItems || 0)),
+            tooltipRow("PV", number(row.pv || 0)),
+            tooltipRow("Active months", number(row.activeMonths || 0))
+          ].join("");
+        }
         return [
           `<div class="tooltip-title">${escapeHtml(row.category)}</div>`,
           tooltipRow("Final estimate", fmtYen.format(row.final || 0)),
@@ -2093,6 +2120,43 @@
         .slice(0, limit);
     }
 
+    function topItemRowsForSelection(limit = 20) {
+      if (state.view !== "genre") return [];
+      const { startMonth, endMonth } = monthRangeForActiveRange();
+      const buckets = new Map();
+      for (const row of topData.topItems || []) {
+        if (state.genre !== ALL_GENRES && row.genre !== state.genre) continue;
+        if (startMonth && row.month < startMonth) continue;
+        if (endMonth && row.month > endMonth) continue;
+        const key = `${row.item}|${row.shop}`;
+        if (!buckets.has(key)) {
+          buckets.set(key, {
+            item: row.item,
+            shop: row.shop,
+            category: `Item ${row.item}`,
+            final: 0,
+            known: 0,
+            imputed: 0,
+            salesItems: 0,
+            pv: 0,
+            activeMonths: 0,
+            activeDays: 0
+          });
+        }
+        const bucket = buckets.get(key);
+        bucket.final += row.sales || 0;
+        bucket.known += row.sales || 0;
+        bucket.salesItems += row.salesItems || 0;
+        bucket.pv += row.pv || 0;
+        bucket.activeDays += row.activeDays || 0;
+        bucket.activeMonths += 1;
+      }
+      return [...buckets.values()]
+        .filter(row => row.final > 0)
+        .sort((a, b) => b.final - a.final)
+        .slice(0, limit);
+    }
+
     function selectedShopGenreLineRows() {
       const selectedGenre = state.shopGenre || shopGenresForShop(state.shop)[0]?.genre || "";
       if (!selectedGenre) return [];
@@ -2201,6 +2265,7 @@
       const summary = summarize(rows);
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
+      const itemRows = topItemRowsForSelection(20);
       const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
       const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
       const selectedShopGenreRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
@@ -2259,6 +2324,8 @@
         el("shopProjectionPanel").hidden = !projectedShopRows.length;
         if (projectedShopRows.length) drawCategoryBarChart("shopProjectionChart", projectedShopRows);
       }
+      el("itemPanel").hidden = state.view !== "genre" || !itemRows.length;
+      if (state.view === "genre" && itemRows.length) drawCategoryBarChart("itemChart", itemRows);
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
         ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | TENKI-observed plus estimated missing ranked sales`
@@ -2270,6 +2337,9 @@
         : `${label} | ${rangeLabel} | scaled from ${rankCurveLabel()} | click a bar to select`;
       el("shopProjectionMeta").textContent = state.view === "genre"
         ? `${label} | top competing ranked shops | TENKI-observed plus estimated unobserved sales`
+        : "";
+      el("itemMeta").textContent = state.view === "genre"
+        ? `${label} | top observed item IDs by sales | ${rangeLabel} | ${number(itemRows.length)} shown`
         : "";
       el("timeChartMeta").textContent = state.view === "shop"
         ? `${label} | total estimated sales across ranked genres | ${state.granularity} view shaped by daily TENKI sales`
