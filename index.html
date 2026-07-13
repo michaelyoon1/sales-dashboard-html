@@ -2089,8 +2089,8 @@
       el("rowsTable").innerHTML = `${head}<tbody>${body}</tbody>`;
     }
 
-    function topItemTableRows(limit = 50) {
-      const { startMonth, endMonth } = monthRangeForActiveRange();
+    function topItemTableRows(limit = 50, ignoreRange = false) {
+      const { startMonth, endMonth } = ignoreRange ? { startMonth: "", endMonth: "" } : monthRangeForActiveRange();
       const buckets = new Map();
       for (const row of topData.topItems || []) {
         if (state.view === "shop" && row.shop !== state.shop) continue;
@@ -2125,9 +2125,10 @@
         .map((row, index) => ({ ...row, rank: index + 1 }));
     }
 
-    function renderTopItemsTable(itemRows, label) {
+    function renderTopItemsTable(itemRows, label, usedRangeFallback = false) {
       const viewLabel = state.view === "shop" ? `${label} | observed item rows by item and genre` : `${label} | observed item rows by item, shop, and genre`;
-      el("topItemsTableMeta").textContent = itemRows.length ? `${viewLabel} | ${number(itemRows.length)} sold items shown` : `${viewLabel} | no observed item rows`;
+      const fallbackNote = usedRangeFallback ? " | no item rows in selected date range, showing all available item rows" : "";
+      el("topItemsTableMeta").textContent = itemRows.length ? `${viewLabel} | ${number(itemRows.length)} sold items shown${fallbackNote}` : `${viewLabel} | no observed item rows`;
       if (!itemRows.length) {
         el("topItemsTable").innerHTML = `<tbody><tr><td><div class="empty-state">No observed item-level rows for this selected shop/date range. Choose a shop marked with item rows in the dropdown.</div></td></tr></tbody>`;
         return;
@@ -2436,7 +2437,10 @@
       const rankRows = rankRowsForTotal(summary.total);
       const rankLineRows = selectedRankRows(aggregateRows);
       const itemRows = topItemRowsForSelection(20);
-      const tableItemRows = topItemTableRows(50);
+      const rangedTableItemRows = topItemTableRows(50);
+      const fallbackTableItemRows = rangedTableItemRows.length ? [] : topItemTableRows(50, true);
+      const tableItemRows = rangedTableItemRows.length ? rangedTableItemRows : fallbackTableItemRows;
+      const usedTableRangeFallback = !rangedTableItemRows.length && fallbackTableItemRows.length > 0;
       const label = state.view === "shop" ? shopName(state.shop) : genreName(state.genre);
       const selectedShopGenreName = state.view === "shop" && state.shopGenre ? genreName(state.shopGenre) : "selected genre";
       const selectedShopGenreRows = state.view === "shop" ? selectedShopGenreLineRows() : [];
@@ -2497,7 +2501,7 @@
       }
       el("itemPanel").hidden = state.view !== "genre" || !itemRows.length;
       if (state.view === "genre" && itemRows.length) drawCategoryBarChart("itemChart", itemRows);
-      renderTopItemsTable(tableItemRows, label);
+      renderTopItemsTable(tableItemRows, label, usedTableRangeFallback);
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
         ? `${label} | ${selectedShopGenreName} | ${rangeLabel} | TENKI-observed plus estimated missing ranked sales`
