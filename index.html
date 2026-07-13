@@ -722,7 +722,8 @@
         </div>
         <div class="legend">
           <span><i class="swatch known"></i>Observed Item Sales</span>
-          <span>Hover for item ID, shop, units, and PV</span>
+          <span><i class="swatch missing"></i>Modeled Missing Item Sales</span>
+          <span>Hover for item ID, shop, units, PV, and rank evidence</span>
         </div>
       </div>
       <div class="canvas-wrap">
@@ -785,12 +786,14 @@
 
   <script src="top_items_daily_data.js?v=top-items-by-genre-20260713"></script>
   <script src="projected_market_data.js?v=combined-300-genres-20260618"></script>
+  <script src="top_estimated_item_data.js?v=estimated-items-20260713"></script>
   <script src="shop_view_data.js?v=shop-mode-20260624"></script>
   <script src="shop_projection_data.js?v=ranked-shop-projections-20260702"></script>
   <script src="event_impact_data.js?v=combined-300-genres-20260618"></script>
   <script>
     const topData = window.TOP_ITEMS_DAILY_DATA || { genres: [], dailyTotals: [] };
     const modelData = window.PROJECTED_MARKET_DATA || { daily: [], rankCurve: [], method: {} };
+    const estimatedItemData = window.TOP_ESTIMATED_ITEM_DATA || { items: [], columns: [] };
     const shopData = window.SHOP_VIEW_DATA || { shops: [], daily: [], genreMonthly: [] };
     const shopProjectionData = window.SHOP_PROJECTION_DATA || { monthly: [] };
     function expandRows(rows, columns) {
@@ -801,6 +804,8 @@
     topData.topItems = expandRows(topData.topItems, topData.topItemColumns);
     modelData.daily = expandRows(modelData.daily, modelData.dailyColumns);
     modelData.genreRankCurves = expandRows(modelData.genreRankCurves, modelData.genreRankCurveColumns);
+    modelData.topEstimatedItems = expandRows(modelData.topEstimatedItems, modelData.topEstimatedItemColumns);
+    estimatedItemData.items = expandRows(estimatedItemData.items, estimatedItemData.columns);
     shopData.shops = expandRows(shopData.shops, shopData.shopColumns);
     shopData.daily = expandRows(shopData.daily, shopData.dailyColumns);
     shopData.genreMonthly = expandRows(shopData.genreMonthly, shopData.genreMonthlyColumns);
@@ -1955,10 +1960,12 @@
           return [
             `<div class="tooltip-title">${escapeHtml(row.category)}</div>`,
             tooltipRow("Shop", shopName(row.shop)),
-            tooltipRow("Observed sales", fmtYen.format(row.final || 0)),
+            tooltipRow("Final estimate", fmtYen.format(row.final || 0)),
+            tooltipRow("Observed sales", fmtYen.format(row.known || row.final || 0)),
+            tooltipRow("Modeled missing", fmtYen.format(row.imputed || 0)),
             tooltipRow("Units", number(row.salesItems || 0)),
             tooltipRow("PV", number(row.pv || 0)),
-            tooltipRow("Active months", number(row.activeMonths || 0))
+            tooltipRow(row.estimatedItem ? "Rank evidence" : "Active months", row.estimatedItem ? `${number(row.rankedRows || 0)} ranked rows; best rank ${number(row.bestRank || 0)}` : number(row.activeMonths || 0))
           ].join("");
         }
         const rows = [
@@ -2270,6 +2277,48 @@
 
     function topItemRowsForSelection(limit = 20) {
       if (state.view !== "genre") return [];
+      const estimatedItems = (estimatedItemData.items && estimatedItemData.items.length) ? estimatedItemData.items : (modelData.topEstimatedItems || []);
+      if (estimatedItems.length) {
+        const buckets = new Map();
+        for (const row of estimatedItems) {
+          if (state.genre !== ALL_GENRES && row.genre !== state.genre) continue;
+          const key = `${row.item}|${row.shop}`;
+          if (!buckets.has(key)) {
+            buckets.set(key, {
+              item: row.item,
+              shop: row.shop,
+              category: `Item ${row.item}`,
+              final: 0,
+              known: 0,
+              imputed: 0,
+              salesItems: 0,
+              pv: 0,
+              activeDays: 0,
+              rankedRows: 0,
+              observedRows: 0,
+              projectedRows: 0,
+              bestRank: row.bestRank || 0,
+              estimatedItem: true
+            });
+          }
+          const bucket = buckets.get(key);
+          bucket.final += row.projectedTotalSales || 0;
+          bucket.known += row.observedSales || 0;
+          bucket.imputed += row.projectedMissingSales || 0;
+          bucket.salesItems += row.salesItems || 0;
+          bucket.pv += row.pv || 0;
+          bucket.activeDays += row.activeDays || 0;
+          bucket.rankedRows += row.rankedRows || 0;
+          bucket.observedRows += row.observedRows || 0;
+          bucket.projectedRows += row.projectedRows || 0;
+          bucket.bestRank = bucket.bestRank ? Math.min(bucket.bestRank, row.bestRank || bucket.bestRank) : row.bestRank || 0;
+        }
+        return [...buckets.values()]
+          .filter(row => row.final > 0)
+          .sort((a, b) => b.final - a.final)
+          .slice(0, limit);
+      }
+
       const { startMonth, endMonth } = monthRangeForActiveRange();
       const buckets = new Map();
       for (const row of topData.topItems || []) {
@@ -2535,6 +2584,9 @@
       }
       el("itemPanel").hidden = state.view !== "genre" || !itemRows.length;
       if (state.view === "genre" && itemRows.length) drawCategoryBarChart("itemChart", itemRows);
+      el("itemMeta").textContent = state.view === "genre"
+        ? `${label} | top item IDs by estimated total sales | observed plus modeled missing | ${number(itemRows.length)} shown`
+        : "";
       renderTopItemsTable(tableItemRows, label, usedTableRangeFallback);
       renderTable(rows);
       el("totalChartMeta").textContent = state.view === "shop"
